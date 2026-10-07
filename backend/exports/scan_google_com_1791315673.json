@@ -1,0 +1,368 @@
+{
+    "url": "https://google.com",
+    "verdict": "suspicious",
+    "runtime_state": {
+        "status": "SCAN_OK",
+        "memory_events": [],
+        "timeouts": [],
+        "ocr_status": "Not Attempted",
+        "playwright_status": "Not Attempted",
+        "vt_quota": "OK",
+        "gsb_quota": "OK",
+        "crawler_failures": 0
+    },
+    "confidence": 0.6,
+    "evidence_gate": [
+        "typosquat"
+    ],
+    "threats": [
+        "Phishing Indicator: Title impersonation: Title claims brand 'Windows' but domain is untrusted",
+        "Phishing Indicator: Automated executable software payload package links (.apk/.exe)",
+        "Phishing Indicator: NLP phishing semantic triggers matching: Phone support number: 1184720131"
+    ],
+    "malicious_count": 0,
+    "suspicious_count": 0,
+    "safe_count": 0,
+    "harmless_count": 0,
+    "undetected_count": 0,
+    "total_engines": 0,
+    "invalid_domain": false,
+    "connection_status": "Reachable",
+    "virusTotal": {
+        "configured": true,
+        "stats": {
+            "malicious": 0,
+            "suspicious": 0,
+            "harmless": 0,
+            "undetected": 0
+        }
+    },
+    "googleSafeBrowsing": {
+        "configured": true,
+        "matches": []
+    },
+    "redirectChain": [
+        "https://google.com"
+    ],
+    "sslInfo": {
+        "https": true,
+        "cert_validity_days": 30
+    },
+    "domainEntropy": 0.0,
+    "findings": [
+        "Missing Content-Security-Policy",
+        "Missing HSTS",
+        "Missing X-Content-Type-Options",
+        "Mixed Content Detected",
+        "Phishing Indicator: Title impersonation: Title claims brand 'Windows' but domain is untrusted",
+        "Phishing Indicator: NLP phishing semantic triggers matching: Phone support number: 1184720131",
+        "Phishing Indicator: Automated executable software payload package links (.apk/.exe)"
+    ],
+    "details": [
+        "Missing Content-Security-Policy: High risk of Cross-Site Scripting (XSS) attacks.",
+        "Missing HSTS: Site does not enforce SSL/TLS for all incoming connections.",
+        "Missing X-Content-Type-Options: Allows browsers to sniff mime types instead of respecting headers.",
+        "Mixed Content Detected: Active resources (images/scripts) loaded insecurely over HTTP.",
+        "Phishing Indicator: Title impersonation: Title claims brand 'Windows' but domain is untrusted: Title impersonation: Title claims brand 'Windows' but domain is untrusted",
+        "Phishing Indicator: NLP phishing semantic triggers matching: Phone support number: 1184720131: NLP phishing semantic triggers matching: Phone support number: 1184720131",
+        "Phishing Indicator: Automated executable software payload package links (.apk/.exe): Automated executable software payload package links (.apk/.exe)"
+    ],
+    "domainInfo": {
+        "registeredDate": "Unknown",
+        "age": "Known/Established",
+        "reputation": "suspicious"
+    },
+    "recommendations": [
+        "Avoid entering passwords or OTPs.",
+        "Do not proceed unless you trust the source completely.",
+        "Configure a strict Content-Security-Policy header.",
+        "Add the Strict-Transport-Security header to force HTTPS."
+    ],
+    "englishSummary": "This website presents significant security risks, primarily indicating a high likelihood of malicious intent. Multiple high-severity phishing indicators were identified, including brand impersonation through a deceptive title claiming \"Windows\" on an untrusted domain, the presence of NLP phishing semantic triggers like an unusual support phone number, and links distributing executable software payloads (such as .apk or .exe files). These findings collectively suggest the website is engineered for phishing attacks and malware distribution.\n\nFurthermore, the website demonstrates several critical security hygiene weaknesses. It is missing important security headers, including Content-Security-Policy, HSTS, and X-Content-Type-Options, which leaves it vulnerable to various web-based attacks such as cross-site scripting and content sniffing. Mixed content was also detected, compromising the integrity of secure connections by loading insecure resources.",
+    "hindiSummary": "\u0938\u094d\u0915\u0948\u0928 \u092a\u0942\u0930\u093e \u0939\u094b \u091a\u0941\u0915\u093e \u0939\u0948\u0964 \u0915\u0943\u092a\u092f\u093e \u0905\u092a\u0928\u0940 \u0938\u0941\u0930\u0915\u094d\u0937\u093e \u0938\u094d\u0925\u093f\u0924\u093f \u0914\u0930 \u0930\u093f\u092a\u094b\u0930\u094d\u091f \u0926\u0947\u0916\u0947\u0902\u0964",
+    "findings_details": [
+        {
+            "type": "Missing Content-Security-Policy",
+            "category": "passive",
+            "severity": "medium",
+            "cvss_score": 6.1,
+            "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N",
+            "evidence": "High risk of Cross-Site Scripting (XSS) attacks.",
+            "remediation": "Configure a strict Content-Security-Policy header."
+        },
+        {
+            "type": "Missing HSTS",
+            "category": "passive",
+            "severity": "low",
+            "cvss_score": 3.7,
+            "cvss_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:N",
+            "evidence": "Site does not enforce SSL/TLS for all incoming connections.",
+            "remediation": "Add the Strict-Transport-Security header to force HTTPS."
+        },
+        {
+            "type": "Missing X-Content-Type-Options",
+            "category": "passive",
+            "severity": "low",
+            "cvss_score": 3.7,
+            "cvss_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:N",
+            "evidence": "Allows browsers to sniff mime types instead of respecting headers.",
+            "remediation": "Set X-Content-Type-Options: nosniff."
+        },
+        {
+            "type": "Mixed Content Detected",
+            "category": "passive",
+            "severity": "medium",
+            "cvss_score": 6.1,
+            "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N",
+            "evidence": "Active resources (images/scripts) loaded insecurely over HTTP.",
+            "remediation": "Change all references to use https:// or relative paths."
+        },
+        {
+            "type": "Phishing Indicator: Title impersonation: Title claims brand 'Windows' but domain is untrusted",
+            "category": "phishing",
+            "severity": "high",
+            "cvss_score": 8.5,
+            "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
+            "evidence": "Title impersonation: Title claims brand 'Windows' but domain is untrusted",
+            "remediation": "Suspicious brand clone impersonation detected (Windows). Avoid submitting any credentials/OTP."
+        },
+        {
+            "type": "Phishing Indicator: NLP phishing semantic triggers matching: Phone support number: 1184720131",
+            "category": "phishing",
+            "severity": "high",
+            "cvss_score": 8.5,
+            "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
+            "evidence": "NLP phishing semantic triggers matching: Phone support number: 1184720131",
+            "remediation": "Suspicious brand clone impersonation detected (Windows). Avoid submitting any credentials/OTP."
+        },
+        {
+            "type": "Phishing Indicator: Automated executable software payload package links (.apk/.exe)",
+            "category": "phishing",
+            "severity": "high",
+            "cvss_score": 8.5,
+            "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
+            "evidence": "Automated executable software payload package links (.apk/.exe)",
+            "remediation": "Suspicious brand clone impersonation detected (Windows). Avoid submitting any credentials/OTP."
+        }
+    ],
+    "fusion_report": {
+        "fusion_score": 0.6,
+        "verdict": "SUSPICIOUS",
+        "evidence_gate": [
+            "typosquat"
+        ],
+        "confidence": 0.6,
+        "breakdown": {
+            "passive": 0.3,
+            "active": 0.5,
+            "threat_intel": 0.0,
+            "anomaly": 0.0
+        }
+    },
+    "crawler_summary": {
+        "spider_crawled_urls": [
+            "https://google.com/advanced_search?hl=en-IN&authuser=0",
+            "https://google.com/intl/en/ads/",
+            "https://google.com/intl/en/about.html",
+            "https://google.com/intl/en/policies/privacy/",
+            "https://google.com/intl/en/policies/terms/"
+        ],
+        "headless_crawler": "Skipped",
+        "dynamic_routes_discovered": [
+            {
+                "path": "/dashboard",
+                "status_code": 200
+            }
+        ],
+        "screenshot_path": ""
+    },
+    "phishing_report": {
+        "phishing_risk_score": 0.4125,
+        "verdict": "SUSPICIOUS",
+        "impersonated_brand": "Windows",
+        "evidence_chain": [
+            "Title impersonation: Title claims brand 'Windows' but domain is untrusted",
+            "NLP phishing semantic triggers matching: Phone support number: 1184720131",
+            "Automated executable software payload package links (.apk/.exe)"
+        ],
+        "forced_override": false,
+        "scores": {
+            "domain": 0.0,
+            "visual": 0.95,
+            "nlp": 0.85,
+            "behavior": 0.35,
+            "structure": 0.0,
+            "reputation": 0.0
+        },
+        "domain_details": {
+            "domain_risk_score": 0.0,
+            "brand_match": null,
+            "spoof_confidence": 0.0,
+            "typosquat_score": 0.0,
+            "unicode_spoof": false,
+            "tld_risk": false,
+            "suspicious_subdomains_count": 0,
+            "crypto_keyword_detected": false,
+            "support_keyword_detected": false,
+            "confusable_similarity_score": 1.0
+        },
+        "visual_details": {
+            "visual_risk_score": 0.95,
+            "brand_impersonated": "Windows",
+            "title_mismatch": true,
+            "logo_consistency_violation": false,
+            "ocr_findings": [
+                "Title/OCR matches brand 'Microsoft' but domain is not official",
+                "Title/OCR matches brand 'Windows' but domain is not official"
+            ],
+            "favicon_hash": "None",
+            "login_detected": true,
+            "otp_traps": false,
+            "support_scam": false,
+            "support_scam_title_match": false,
+            "perceptual_hash": "0000000000000000",
+            "ocr_extracted_len": 0
+        },
+        "nlp_details": {
+            "language_risk_score": 0.85,
+            "confidence": 0.25,
+            "matched_phrases": [
+                "Phone support number: 1184720131"
+            ],
+            "phone_detected": true,
+            "remote_support_detected": false
+        },
+        "behavior_details": {
+            "behavior_score": 0.35,
+            "meta_refresh": false,
+            "popup_storm": false,
+            "hidden_links": false,
+            "auto_download": true,
+            "fullscreen_trap": false,
+            "overlay_attack": true,
+            "reasons": [
+                "Automated executable software payload package links (.apk/.exe)"
+            ]
+        },
+        "structure_details": {
+            "credential_harvest_score": 0.0,
+            "form_count": 1,
+            "password_count": 0,
+            "otp_count": 0,
+            "card_count": 0,
+            "wallet_count": 0,
+            "bank_login": false,
+            "iframe_usage": false,
+            "external_scripts_count": 0
+        }
+    },
+    "normalized_url": "https://google.com",
+    "original_input": "https://google.com",
+    "hostname": "google.com",
+    "overall_status": "Suspicious",
+    "risk_score": 50,
+    "confidence_percent": 100,
+    "confidence_label": "Confidence reflects heuristics and reputation API results",
+    "technical_checks": [
+        {
+            "check": "HTTPS",
+            "passed": true,
+            "detail": "Connection uses HTTPS"
+        },
+        {
+            "check": "IP Address URL",
+            "passed": true,
+            "detail": "Hostname is a domain name"
+        },
+        {
+            "check": "Embedded Credentials",
+            "passed": true,
+            "detail": "No credentials embedded"
+        },
+        {
+            "check": "URL Shortener",
+            "passed": true,
+            "detail": "Not a known URL shortener"
+        },
+        {
+            "check": "Punycode / Homograph",
+            "passed": true,
+            "detail": "No homograph pattern detected"
+        },
+        {
+            "check": "Suspicious TLD",
+            "passed": true,
+            "detail": "TLD is not high-risk"
+        },
+        {
+            "check": "Excessive Subdomains",
+            "passed": true,
+            "detail": "Subdomain depth: 0"
+        },
+        {
+            "check": "URL Length",
+            "passed": true,
+            "detail": "18 chars \u2014 acceptable"
+        },
+        {
+            "check": "High Entropy Path",
+            "passed": true,
+            "detail": "Entropy 0.0 \u2014 normal"
+        },
+        {
+            "check": "Suspicious Keywords",
+            "passed": true,
+            "detail": "No suspicious keywords"
+        },
+        {
+            "check": "Suspicious Port",
+            "passed": true,
+            "detail": "Standard port"
+        }
+    ],
+    "score_factors": [
+        {
+            "factor": "Trusted domain",
+            "impact": -30
+        }
+    ],
+    "threat_indicators": [],
+    "api_status": {
+        "virustotal": {
+            "configured": true,
+            "used": true,
+            "label": "VirusTotal"
+        },
+        "google_safe_browsing": {
+            "configured": true,
+            "used": true,
+            "label": "Google Safe Browsing"
+        },
+        "heuristics": {
+            "configured": true,
+            "used": true,
+            "label": "Local Heuristics"
+        }
+    },
+    "observability": {
+        "durations": {
+            "recon": 2.8402340412139893,
+            "crawler": 9.198440551757812,
+            "passive": 0.0008132457733154297,
+            "active": 0.0008437633514404297,
+            "threat_intel": 3.8268110752105713,
+            "phishing": 0.09651613235473633,
+            "fusion": 1.0251998901367188e-05,
+            "reporting": 10.091379880905151,
+            "total_scan": 26.066887140274048,
+            "memory_delta_mb": 8.234375
+        },
+        "cache_stats": {
+            "hits": 0,
+            "misses": 1
+        },
+        "memory_usage_mb": 94.54296875,
+        "timeouts_encountered": 1,
+        "api_failures": 0
+    }
+}

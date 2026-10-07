@@ -1,0 +1,8 @@
+Field,Value
+Target URL,https://google.com
+Verdict,safe
+Confidence,0.9
+Findings Count,4
+English Summary,"The website exhibits several security weaknesses that should be addressed. Most notably, mixed content has been detected, indicating that some resources are being loaded over insecure HTTP connections despite the use of HTTPS, which compromises the integrity of the secure connection.
+
+Furthermore, a critical Content-Security-Policy header is missing, leaving the site more vulnerable to cross-site scripting (XSS) and data injection attacks. Other important security headers, including HSTS and X-Content-Type-Options, are also absent. Their absence reduces the site's resilience against various client-side attacks and downgrade attacks, although the immediate risk associated with these specific missing headers is considered lower."

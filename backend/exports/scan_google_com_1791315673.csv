@@ -1,0 +1,8 @@
+Field,Value
+Target URL,https://google.com
+Verdict,suspicious
+Confidence,0.6
+Findings Count,7
+English Summary,"This website presents significant security risks, primarily indicating a high likelihood of malicious intent. Multiple high-severity phishing indicators were identified, including brand impersonation through a deceptive title claiming ""Windows"" on an untrusted domain, the presence of NLP phishing semantic triggers like an unusual support phone number, and links distributing executable software payloads (such as .apk or .exe files). These findings collectively suggest the website is engineered for phishing attacks and malware distribution.
+
+Furthermore, the website demonstrates several critical security hygiene weaknesses. It is missing important security headers, including Content-Security-Policy, HSTS, and X-Content-Type-Options, which leaves it vulnerable to various web-based attacks such as cross-site scripting and content sniffing. Mixed content was also detected, compromising the integrity of secure connections by loading insecure resources."

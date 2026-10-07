@@ -1,0 +1,6 @@
+Field,Value
+Target URL,https://google.com
+Verdict,safe
+Confidence,0.9
+Findings Count,4
+English Summary,"The website presents several security findings primarily related to client-side protection and secure content delivery. Key issues include the absence of a Content-Security-Policy, which increases susceptibility to cross-site scripting and other content injection attacks. Additionally, mixed content was detected, compromising the integrity of HTTPS connections by loading insecure resources. The website also lacks HTTP Strict Transport Security (HSTS) and X-Content-Type-Options headers, indicating a need for improved foundational security hardening. Addressing these findings would enhance the overall security posture and better protect users."

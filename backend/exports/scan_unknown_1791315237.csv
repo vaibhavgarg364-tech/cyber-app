@@ -1,0 +1,6 @@
+Field,Value
+Target URL,google.com
+Verdict,dangerous
+Confidence,0.95
+Findings Count,3
+English Summary,"The website's security status indicates a lack of implementation for several important HTTP security headers. Specifically, the Content-Security-Policy, X-Frame-Options, and X-Content-Type-Options headers are missing. This exposes users to potential client-side vulnerabilities, including Cross-Site Scripting (XSS), clickjacking, and MIME-sniffing attacks. These findings suggest a weakened defense against browser-based exploitation."

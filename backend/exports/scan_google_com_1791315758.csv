@@ -1,0 +1,6 @@
+Field,Value
+Target URL,https://google.com
+Verdict,safe
+Confidence,0.9
+Findings Count,4
+English Summary,"The website exhibits several areas for security improvement. Key security headers such as Content-Security-Policy, HSTS, and X-Content-Type-Options are missing, which reduces client-side protection against various web attacks. Additionally, the presence of mixed content compromises the integrity and security benefits of HTTPS by loading insecure resources on secure pages. Addressing these findings is recommended to enhance the overall security posture and user trust."

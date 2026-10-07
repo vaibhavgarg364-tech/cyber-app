@@ -1,0 +1,6 @@
+Field,Value
+Target URL,https://google.com
+Verdict,safe
+Confidence,0.9
+Findings Count,4
+English Summary,"This website exhibits several security concerns primarily related to HTTP response headers and content delivery. Key security headers such as Content-Security-Policy, HSTS, and X-Content-Type-Options are missing, which can expose users to client-side vulnerabilities and downgrade attacks. Furthermore, mixed content was detected, indicating that some resources are being loaded insecurely over HTTP, potentially undermining the protection provided by HTTPS."

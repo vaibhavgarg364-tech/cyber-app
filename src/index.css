@@ -1,0 +1,517 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Satoshi:wght@400;500;700;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background: linear-gradient(135deg, #02131F 0%, #060d1f 50%, #041A22 100%);
+    background-attachment: fixed;
+    color: #ffffff;
+    min-height: 100vh;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #0099CC #02131F;
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: #02131F;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: #00E0FF;
+    border-radius: 4px;
+    opacity: 0.5;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: #0099CC;
+    opacity: 1;
+  }
+}
+
+@layer utilities {
+  .animate-pulse-subtle {
+    animation: pulse-subtle 2s ease-in-out infinite;
+  }
+
+  .glass-effect {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .cyber-border {
+    border: 1px solid rgba(0, 224, 255, 0.2);
+  }
+
+  .cyber-border-glow {
+    border: 1px solid rgba(0, 224, 255, 0.4);
+    box-shadow: inset 0 0 16px rgba(0, 224, 255, 0.1);
+  }
+
+  .cyber-grid-overlay {
+    background-image:
+      linear-gradient(rgba(0, 224, 255, 0.09) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 224, 255, 0.09) 1px, transparent 1px);
+    background-size: 46px 46px, 46px 46px;
+    mask-image: radial-gradient(circle at 50% 20%, rgba(0, 0, 0, 1), transparent 75%);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CyberSaathi — Component Styles
+   All prefixed with cs- to avoid collisions with existing Veyron styles.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Window (mobile-first with safe viewport height) ── */
+.cs-window {
+  position: fixed;
+  bottom: 0;
+  right: 0;
+  z-index: 50;
+  width: 100vw;
+  height: 100dvh; /* safe viewport height — respects mobile keyboard */
+  max-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: none;
+  border-radius: 0;
+  background: rgba(7, 16, 31, 0.98);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: 0 0 0 1px rgba(0, 224, 255, 0.06);
+}
+@media (min-width: 640px) {
+  .cs-window {
+    bottom: 12px;
+    right: 12px;
+    width: 440px;
+    height: auto;
+    max-height: 88vh;
+    border-radius: 20px;
+    border: 1px solid rgba(0, 224, 255, 0.12);
+    box-shadow:
+      0 32px 80px rgba(0, 0, 0, 0.7),
+      0 0 0 1px rgba(0, 224, 255, 0.06),
+      0 0 60px rgba(0, 224, 255, 0.04);
+  }
+}
+
+/* ── Header ── */
+.cs-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #0d1f3c 0%, #0a1628 100%);
+  border-bottom: 1px solid rgba(0, 224, 255, 0.12);
+  flex-shrink: 0;
+}
+
+/* ── Avatar ── */
+.cs-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(0, 224, 255, 0.1);
+  border: 1.5px solid rgba(0, 224, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+  overflow: visible;
+}
+.cs-avatar-ring {
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(0, 224, 255, 0.2);
+  animation: cs-avatar-glow 3s ease-in-out infinite;
+}
+
+/* ── Messages area ── */
+.cs-messages {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0; /* critical for flex overflow */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 224, 255, 0.2) transparent;
+}
+.cs-messages::-webkit-scrollbar { width: 4px; }
+.cs-messages::-webkit-scrollbar-track { background: transparent; }
+.cs-messages::-webkit-scrollbar-thumb {
+  background: rgba(0, 224, 255, 0.2);
+  border-radius: 2px;
+}
+
+/* ── Message rows ── */
+.cs-msg-row {
+  display: flex;
+  align-items: flex-start;
+}
+.cs-msg-row-user {
+  justify-content: flex-end;
+}
+.cs-msg-row-bot {
+  justify-content: flex-start;
+}
+
+/* ── Bot avatar (inline) ── */
+.cs-bot-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(0, 224, 255, 0.1);
+  border: 1px solid rgba(0, 224, 255, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 8px;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+/* ── Message bubbles ── */
+.cs-bubble {
+  max-width: 82%;
+  border-radius: 16px;
+  padding: 10px 14px;
+  font-size: 14px;
+  line-height: 1.55;
+  word-break: break-word;
+}
+.cs-bubble-user {
+  background: linear-gradient(135deg, #06b6d4, #2563eb);
+  color: #060d1f;
+  font-weight: 500;
+  border-bottom-right-radius: 4px;
+}
+.cs-bubble-bot {
+  background: rgba(13, 31, 60, 0.9);
+  color: #e2e8f0;
+  border: 1px solid rgba(0, 224, 255, 0.08);
+  border-bottom-left-radius: 4px;
+}
+
+/* ── Typing indicator ── */
+.cs-typing-bubble {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 16px;
+}
+.cs-typing-label {
+  font-size: 12px;
+  color: #64748b;
+  margin-right: 4px;
+}
+
+/* ── Quick Action Chips ── */
+.cs-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+.cs-chip-action {
+  border: 1px solid rgba(0, 224, 255, 0.25);
+  background: rgba(0, 224, 255, 0.08);
+  color: #7dd9ff;
+}
+.cs-chip-action:hover {
+  background: rgba(0, 224, 255, 0.18);
+  border-color: rgba(0, 224, 255, 0.4);
+}
+
+/* ── Input area (mobile-safe) ── */
+.cs-input-area {
+  position: relative;
+  border-top: 1px solid rgba(0, 224, 255, 0.08);
+  background: #060d1f;
+  flex-shrink: 0;
+  /* Prevent iOS keyboard push-up issues */
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+.cs-input-row {
+  padding: 10px 12px;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+/* ── Textarea (auto-grow, mobile keyboard friendly) ── */
+.cs-text-input {
+  flex: 1;
+  min-height: 40px;
+  max-height: 96px; /* ~4 lines */
+  background: #0a1628;
+  border: 1.5px solid rgba(0, 224, 255, 0.15);
+  border-radius: 12px;
+  padding: 9px 14px;
+  color: #ffffff;
+  font-size: 15px;
+  line-height: 1.4;
+  outline: none;
+  resize: none;
+  overflow-y: auto;
+  font-family: inherit;
+  transition: border-color 0.2s ease;
+}
+.cs-text-input::placeholder {
+  color: #475569;
+}
+.cs-text-input:focus {
+  border-color: rgba(0, 224, 255, 0.45);
+}
+.cs-text-input-listening {
+  border-color: rgba(0, 224, 255, 0.35);
+  box-shadow: 0 0 0 2px rgba(0, 224, 255, 0.08);
+}
+
+/* ── Send button ── */
+.cs-send-btn {
+  padding: 10px;
+  background: #06b6d4;
+  color: #060d1f;
+  border-radius: 12px;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  min-height: 40px;
+}
+.cs-send-btn:hover:not(:disabled) {
+  background: #22d3ee;
+}
+.cs-send-btn:disabled {
+  background: #1e293b;
+  color: #475569;
+  cursor: not-allowed;
+}
+
+/* ── Mic button (touch-optimized) ── */
+.cs-mic-btn {
+  position: relative;
+  padding: 10px;
+  border-radius: 12px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  overflow: visible;
+  min-width: 40px;
+  min-height: 40px;
+  touch-action: manipulation; /* prevents double-tap zoom on mobile */
+  -webkit-tap-highlight-color: transparent;
+}
+.cs-mic-idle {
+  background: #0d2040;
+  border: 1.5px solid rgba(0, 224, 255, 0.2);
+  color: #06b6d4;
+}
+.cs-mic-idle:hover {
+  background: #132d54;
+  border-color: rgba(0, 224, 255, 0.4);
+}
+.cs-mic-active {
+  background: #dc2626;
+  border: 1.5px solid #ef4444;
+  color: #ffffff;
+}
+.cs-mic-pulse {
+  position: absolute;
+  inset: -4px;
+  border-radius: 16px;
+  border: 2px solid rgba(220, 38, 38, 0.5);
+  animation: cs-mic-ring-pulse 1.5s ease-out infinite;
+  pointer-events: none;
+}
+
+/* ── Listening badge ── */
+.cs-listening-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.85), rgba(190, 18, 60, 0.85));
+  color: white;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(220, 38, 38, 0.3);
+}
+
+/* ── Error bar with retry ── */
+.cs-error-bar {
+  margin: 0 12px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(127, 29, 29, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+.cs-error-text {
+  font-size: 12px;
+  color: #fca5a5;
+  flex: 1;
+}
+.cs-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+.cs-retry-btn:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+/* ── Floating Action Button ── */
+.cs-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 224, 255, 0.35);
+  background: linear-gradient(135deg, #06b6d4, #3b82f6);
+  color: #04131f;
+  font-weight: 700;
+  cursor: pointer;
+  overflow: visible;
+}
+.cs-fab-glow {
+  position: absolute;
+  inset: -6px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(0, 224, 255, 0.25) 0%, transparent 70%);
+  pointer-events: none;
+  animation: cs-avatar-glow 3s ease-in-out infinite;
+}
+.cs-fab-emergency-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ef4444;
+  border: 2px solid #060d1f;
+  animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+/* ── Typing dots ── */
+.cs-typing-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #06b6d4;
+  animation: cs-typing-bounce 1.4s ease-in-out infinite;
+}
+
+/* ── Waveform bars ── */
+.cs-wave-bar {
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: #ffffff;
+  opacity: 0.9;
+  animation: cs-wave 1s ease-in-out infinite;
+}
+
+/* ─── Keyframes ────────────────────────────────────────────────────────────── */
+
+@keyframes cs-wave {
+  0%, 100% { transform: scaleY(0.35); }
+  50% { transform: scaleY(1); }
+}
+
+@keyframes cs-typing-bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40% { transform: translateY(-4px); opacity: 1; }
+}
+
+@keyframes cs-mic-ring-pulse {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+
+@keyframes cs-avatar-glow {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.05); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
+
+@keyframes pulse-subtle {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); }
+}
+
+/* Premium transitions */
+* {
+  @apply transition-all duration-300 ease-smooth;
+}
+
+button, a {
+  @apply transition-all duration-200;
+}
+
+/* Selection styling */
+::selection {
+  background-color: rgba(0, 224, 255, 0.3);
+  color: #00E0FF;
+}
+
+::-moz-selection {
+  background-color: rgba(0, 224, 255, 0.3);
+  color: #00E0FF;
+}
+

@@ -1,0 +1,6 @@
+Field,Value
+Target URL,http://paypal-login-verify.tk/account
+Verdict,dangerous
+Confidence,0.95
+Findings Count,3
+English Summary,"The website's security status indicates a need for improved implementation of HTTP security headers. The most significant finding is the absence of Content-Security-Policy, which represents a medium-level risk by leaving the site more susceptible to client-side injection attacks. Furthermore, the lack of X-Frame-Options and X-Content-Type-Options, while lower in severity, reduces the website's defense against clickjacking and MIME-sniffing vulnerabilities. Addressing these missing headers would enhance the website's overall client-side security posture."

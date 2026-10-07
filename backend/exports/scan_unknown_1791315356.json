@@ -1,0 +1,298 @@
+{
+    "url": "google.com",
+    "verdict": "dangerous",
+    "runtime_state": {
+        "status": "SCAN_OK",
+        "memory_events": [],
+        "timeouts": [],
+        "ocr_status": "Not Attempted",
+        "playwright_status": "Not Attempted",
+        "vt_quota": "OK",
+        "gsb_quota": "OK",
+        "crawler_failures": 0
+    },
+    "confidence": 0.95,
+    "evidence_gate": [
+        "malicious reputation"
+    ],
+    "threats": [],
+    "malicious_count": 2,
+    "suspicious_count": 0,
+    "safe_count": 62,
+    "harmless_count": 62,
+    "undetected_count": 29,
+    "total_engines": 93,
+    "invalid_domain": false,
+    "connection_status": "Reachable",
+    "virusTotal": {
+        "configured": true,
+        "stats": {
+            "malicious": 2,
+            "suspicious": 0,
+            "harmless": 62,
+            "undetected": 29
+        }
+    },
+    "googleSafeBrowsing": {
+        "configured": true,
+        "matches": []
+    },
+    "redirectChain": [
+        "google.com"
+    ],
+    "sslInfo": {
+        "https": false,
+        "cert_validity_days": null
+    },
+    "domainEntropy": 0.0,
+    "findings": [
+        "Missing Content-Security-Policy",
+        "Missing X-Frame-Options",
+        "Missing X-Content-Type-Options"
+    ],
+    "details": [
+        "Missing Content-Security-Policy: High risk of Cross-Site Scripting (XSS) attacks.",
+        "Missing X-Frame-Options: Exposes website to Clickjacking vulnerabilities.",
+        "Missing X-Content-Type-Options: Allows browsers to sniff mime types instead of respecting headers."
+    ],
+    "domainInfo": {
+        "registeredDate": "Unknown",
+        "age": "Known/Established",
+        "reputation": "dangerous"
+    },
+    "recommendations": [
+        "Do NOT interact with this link.",
+        "Report to your IT/security team if received via email or SMS.",
+        "Configure a strict Content-Security-Policy header.",
+        "Add X-Frame-Options header (DENY or SAMEORIGIN)."
+    ],
+    "englishSummary": "The website is currently missing several key security headers, including Content-Security-Policy, X-Frame-Options, and X-Content-Type-Options. The absence of these headers indicates a lack of robust client-side protection, which could leave users vulnerable to certain types of attacks such as cross-site scripting, clickjacking, and MIME sniffing. While these are passive findings, implementing these headers is crucial for enhancing the overall defensive posture against common web vulnerabilities.",
+    "hindiSummary": "\u0938\u094d\u0915\u0948\u0928 \u092a\u0942\u0930\u093e \u0939\u094b \u091a\u0941\u0915\u093e \u0939\u0948\u0964 \u0915\u0943\u092a\u092f\u093e \u0905\u092a\u0928\u0940 \u0938\u0941\u0930\u0915\u094d\u0937\u093e \u0938\u094d\u0925\u093f\u0924\u093f \u0914\u0930 \u0930\u093f\u092a\u094b\u0930\u094d\u091f \u0926\u0947\u0916\u0947\u0902\u0964",
+    "findings_details": [
+        {
+            "type": "Missing Content-Security-Policy",
+            "category": "passive",
+            "severity": "medium",
+            "cvss_score": 6.1,
+            "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N",
+            "evidence": "High risk of Cross-Site Scripting (XSS) attacks.",
+            "remediation": "Configure a strict Content-Security-Policy header."
+        },
+        {
+            "type": "Missing X-Frame-Options",
+            "category": "passive",
+            "severity": "low",
+            "cvss_score": 3.7,
+            "cvss_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:N",
+            "evidence": "Exposes website to Clickjacking vulnerabilities.",
+            "remediation": "Add X-Frame-Options header (DENY or SAMEORIGIN)."
+        },
+        {
+            "type": "Missing X-Content-Type-Options",
+            "category": "passive",
+            "severity": "low",
+            "cvss_score": 3.7,
+            "cvss_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:N",
+            "evidence": "Allows browsers to sniff mime types instead of respecting headers.",
+            "remediation": "Set X-Content-Type-Options: nosniff."
+        }
+    ],
+    "fusion_report": {
+        "fusion_score": 0.95,
+        "verdict": "MALICIOUS",
+        "evidence_gate": [
+            "malicious reputation"
+        ],
+        "confidence": 0.95,
+        "breakdown": {
+            "passive": 0.3,
+            "active": 1.0,
+            "threat_intel": 1.0,
+            "anomaly": 0.0
+        }
+    },
+    "crawler_summary": {
+        "spider_crawled_urls": [],
+        "headless_crawler": "Skipped",
+        "dynamic_routes_discovered": [],
+        "screenshot_path": ""
+    },
+    "phishing_report": {
+        "phishing_risk_score": 0.1,
+        "verdict": "SAFE",
+        "impersonated_brand": "None",
+        "evidence_chain": [],
+        "forced_override": false,
+        "scores": {
+            "domain": 0.0,
+            "visual": 0.0,
+            "nlp": 0.0,
+            "behavior": 0.0,
+            "structure": 0.0,
+            "reputation": 1.0
+        },
+        "domain_details": {
+            "domain_risk_score": 0.0,
+            "brand_match": null,
+            "spoof_confidence": 0.0,
+            "typosquat_score": 0.0,
+            "unicode_spoof": false,
+            "tld_risk": false,
+            "suspicious_subdomains_count": 0,
+            "crypto_keyword_detected": false,
+            "support_keyword_detected": false,
+            "confusable_similarity_score": 0.0
+        },
+        "visual_details": {
+            "visual_risk_score": 0.0,
+            "brand_impersonated": null,
+            "title_mismatch": false,
+            "logo_consistency_violation": false,
+            "ocr_findings": [],
+            "favicon_hash": "None",
+            "login_detected": false,
+            "otp_traps": false,
+            "support_scam": false,
+            "support_scam_title_match": false,
+            "perceptual_hash": "0000000000000000",
+            "ocr_extracted_len": 0
+        },
+        "nlp_details": {
+            "language_risk_score": 0.0,
+            "confidence": 0.0,
+            "matched_phrases": [],
+            "phone_detected": false,
+            "remote_support_detected": false
+        },
+        "behavior_details": {
+            "behavior_score": 0.0,
+            "meta_refresh": false,
+            "popup_storm": false,
+            "hidden_links": false,
+            "auto_download": false,
+            "fullscreen_trap": false,
+            "overlay_attack": false,
+            "reasons": []
+        },
+        "structure_details": {
+            "credential_harvest_score": 0.0,
+            "form_count": 0,
+            "password_count": 0,
+            "otp_count": 0,
+            "card_count": 0,
+            "wallet_count": 0,
+            "bank_login": false,
+            "iframe_usage": false,
+            "external_scripts_count": 0
+        }
+    },
+    "normalized_url": "https://google.com",
+    "original_input": "google.com",
+    "hostname": "google.com",
+    "overall_status": "Dangerous",
+    "risk_score": 75,
+    "confidence_percent": 90,
+    "confidence_label": "Confidence reflects heuristics and reputation API results",
+    "technical_checks": [
+        {
+            "check": "HTTPS",
+            "passed": true,
+            "detail": "Connection uses HTTPS"
+        },
+        {
+            "check": "IP Address URL",
+            "passed": true,
+            "detail": "Hostname is a domain name"
+        },
+        {
+            "check": "Embedded Credentials",
+            "passed": true,
+            "detail": "No credentials embedded"
+        },
+        {
+            "check": "URL Shortener",
+            "passed": true,
+            "detail": "Not a known URL shortener"
+        },
+        {
+            "check": "Punycode / Homograph",
+            "passed": true,
+            "detail": "No homograph pattern detected"
+        },
+        {
+            "check": "Suspicious TLD",
+            "passed": true,
+            "detail": "TLD is not high-risk"
+        },
+        {
+            "check": "Excessive Subdomains",
+            "passed": true,
+            "detail": "Subdomain depth: 0"
+        },
+        {
+            "check": "URL Length",
+            "passed": true,
+            "detail": "18 chars \u2014 acceptable"
+        },
+        {
+            "check": "High Entropy Path",
+            "passed": true,
+            "detail": "Entropy 0.0 \u2014 normal"
+        },
+        {
+            "check": "Suspicious Keywords",
+            "passed": true,
+            "detail": "No suspicious keywords"
+        },
+        {
+            "check": "Suspicious Port",
+            "passed": true,
+            "detail": "Standard port"
+        }
+    ],
+    "score_factors": [
+        {
+            "factor": "Trusted domain",
+            "impact": -30
+        }
+    ],
+    "threat_indicators": [],
+    "api_status": {
+        "virustotal": {
+            "configured": true,
+            "used": true,
+            "label": "VirusTotal"
+        },
+        "google_safe_browsing": {
+            "configured": true,
+            "used": true,
+            "label": "Google Safe Browsing"
+        },
+        "heuristics": {
+            "configured": true,
+            "used": true,
+            "label": "Local Heuristics"
+        }
+    },
+    "observability": {
+        "durations": {
+            "recon": 0.6087324619293213,
+            "crawler": 2.4090845584869385,
+            "passive": 0.00043082237243652344,
+            "active": 0.0011785030364990234,
+            "threat_intel": 2.3399770259857178,
+            "phishing": 0.010133981704711914,
+            "fusion": 9.059906005859375e-06,
+            "reporting": 3.959824323654175,
+            "total_scan": 9.342825412750244,
+            "memory_delta_mb": 7.12890625
+        },
+        "cache_stats": {
+            "hits": 0,
+            "misses": 1
+        },
+        "memory_usage_mb": 93.7265625,
+        "timeouts_encountered": 0,
+        "api_failures": 0
+    }
+}

@@ -1,0 +1,6 @@
+Field,Value
+Target URL,https://github.com
+Verdict,safe
+Confidence,0.9
+Findings Count,1
+English Summary,"The website's security status indicates a weak Content-Security-Policy (CSP). While a CSP is in place, its configuration is not optimal and may not provide sufficient protection against certain client-side attacks, such as cross-site scripting (XSS) or data injection. This finding is considered low severity and passive, meaning it was identified through observation rather than an active exploit. Further review of the CSP configuration is recommended to strengthen the website's defensive posture."

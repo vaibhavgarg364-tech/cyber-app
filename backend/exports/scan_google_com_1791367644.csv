@@ -1,0 +1,6 @@
+Field,Value
+Target URL,https://google.com
+Verdict,safe
+Confidence,0.9
+Findings Count,4
+English Summary,"The website exhibits several passive security weaknesses primarily related to missing security headers and improper handling of secure connections. Notably, the absence of a Content-Security-Policy header increases the risk of client-side injection attacks. Furthermore, the detection of mixed content significantly weakens the integrity of the secure HTTPS connection, potentially exposing users to man-in-the-middle attacks and content manipulation. Additional concerns include the lack of HTTP Strict Transport Security (HSTS) and the X-Content-Type-Options header, which further contribute to a less robust security posture by increasing exposure to downgrade attacks and MIME-sniffing vulnerabilities."

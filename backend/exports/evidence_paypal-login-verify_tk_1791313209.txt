@@ -1,0 +1,9 @@
+EVIDENCE DOSSIER FOR http://paypal-login-verify.tk/account
+============================================================
+Verdict: SAFE
+Confidence: 0.9
+
+Findings Details:
+- [PASSIVE] Missing Content-Security-Policy: High risk of Cross-Site Scripting (XSS) attacks.
+- [PASSIVE] Missing X-Frame-Options: Exposes website to Clickjacking vulnerabilities.
+- [PASSIVE] Missing X-Content-Type-Options: Allows browsers to sniff mime types instead of respecting headers.

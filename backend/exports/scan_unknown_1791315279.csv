@@ -1,0 +1,6 @@
+Field,Value
+Target URL,google.com
+Verdict,dangerous
+Confidence,0.95
+Findings Count,3
+English Summary,"The website is currently missing several key security headers, including Content-Security-Policy, X-Frame-Options, and X-Content-Type-Options. The absence of these headers indicates a gap in client-side security hardening and best practices, potentially increasing the site's susceptibility to common web vulnerabilities such as cross-site scripting, clickjacking, and MIME-sniffing attacks."

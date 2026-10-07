@@ -1,0 +1,6 @@
+Field,Value
+Target URL,http://paypal-security-login-verify.xyz/account/login?token=urgent
+Verdict,dangerous
+Confidence,0.95
+Findings Count,3
+English Summary,Research scanner completed successfully.

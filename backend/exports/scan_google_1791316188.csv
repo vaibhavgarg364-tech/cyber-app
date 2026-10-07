@@ -1,0 +1,6 @@
+Field,Value
+Target URL,https://google
+Verdict,safe
+Confidence,0.9
+Findings Count,4
+English Summary,"The website is missing several important security headers, which indicates a lack of defensive measures against common web vulnerabilities. Specifically, the site lacks Content-Security-Policy, rated as a medium concern, which helps protect against cross-site scripting and other injection attacks. Additionally, HTTP Strict Transport Security (HSTS), X-Frame-Options, and X-Content-Type-Options headers are absent, weakening protections against downgrade attacks, clickjacking, and MIME-sniffing vulnerabilities, respectively. While no active vulnerabilities were reported, the absence of these headers reduces the overall robustness of the website's security posture."

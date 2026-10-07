@@ -1,0 +1,8 @@
+EVIDENCE DOSSIER FOR http://google.com
+============================================================
+Verdict: SAFE
+Confidence: 0.9
+
+Findings Details:
+- [PASSIVE] Missing Content-Security-Policy: High risk of Cross-Site Scripting (XSS) attacks.
+- [PASSIVE] Missing X-Content-Type-Options: Allows browsers to sniff mime types instead of respecting headers.

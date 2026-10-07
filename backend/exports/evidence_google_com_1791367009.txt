@@ -1,0 +1,10 @@
+EVIDENCE DOSSIER FOR https://google.com
+============================================================
+Verdict: SAFE
+Confidence: 0.9
+
+Findings Details:
+- [PASSIVE] Missing Content-Security-Policy: High risk of Cross-Site Scripting (XSS) attacks.
+- [PASSIVE] Missing HSTS: Site does not enforce SSL/TLS for all incoming connections.
+- [PASSIVE] Missing X-Content-Type-Options: Allows browsers to sniff mime types instead of respecting headers.
+- [PASSIVE] Mixed Content Detected: Active resources (images/scripts) loaded insecurely over HTTP.

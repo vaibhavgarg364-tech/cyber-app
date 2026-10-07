@@ -1,0 +1,9 @@
+EVIDENCE DOSSIER FOR http://google-rewards-claim.xyz
+============================================================
+Verdict: SUSPICIOUS
+Confidence: 0.6
+
+Findings Details:
+- [PASSIVE] Missing Content-Security-Policy: High risk of Cross-Site Scripting (XSS) attacks.
+- [PASSIVE] Missing X-Frame-Options: Exposes website to Clickjacking vulnerabilities.
+- [PASSIVE] Missing X-Content-Type-Options: Allows browsers to sniff mime types instead of respecting headers.

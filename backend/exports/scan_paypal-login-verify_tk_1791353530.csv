@@ -1,0 +1,6 @@
+Field,Value
+Target URL,http://paypal-login-verify.tk/account
+Verdict,suspicious
+Confidence,0.9
+Findings Count,3
+English Summary,"The website is currently missing several important security headers, including Content-Security-Policy, X-Frame-Options, and X-Content-Type-Options. The absence of these headers reduces the site's defense against various client-side attacks such as cross-site scripting (XSS), clickjacking, and MIME-sniffing. Implementing these headers is recommended to enhance the website's overall security posture."

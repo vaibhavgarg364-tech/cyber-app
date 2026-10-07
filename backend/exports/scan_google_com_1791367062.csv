@@ -1,0 +1,6 @@
+Field,Value
+Target URL,https://google.com
+Verdict,safe
+Confidence,0.9
+Findings Count,4
+English Summary,"The website exhibits several security configuration weaknesses. It is missing crucial security headers, specifically Content-Security-Policy and X-Content-Type-Options, which leaves it vulnerable to certain client-side attacks. Additionally, HTTP Strict Transport Security (HSTS) is not implemented, which could allow for protocol downgrade attacks. A significant concern is the detection of mixed content, where some resources are loaded insecurely over HTTP despite the main page being served via HTTPS, compromising the overall security and integrity of the connection for users. These issues indicate a need for immediate attention to improve the website's security posture."

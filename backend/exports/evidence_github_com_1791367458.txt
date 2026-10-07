@@ -1,0 +1,7 @@
+EVIDENCE DOSSIER FOR https://github.com
+============================================================
+Verdict: SAFE
+Confidence: 0.9
+
+Findings Details:
+- [PASSIVE] Weak Content-Security-Policy: Wildcard or unsafe directives reduce policy effectiveness.
