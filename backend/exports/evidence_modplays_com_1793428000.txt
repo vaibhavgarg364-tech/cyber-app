@@ -1,0 +1,13 @@
+EVIDENCE DOSSIER FOR https://modplays.com/apps/entertainment/spotify
+============================================================
+Verdict: SUSPICIOUS
+Confidence: 0.6
+
+Findings Details:
+- [PASSIVE] Missing Content-Security-Policy: High risk of Cross-Site Scripting (XSS) attacks.
+- [PASSIVE] Missing HSTS: Site does not enforce SSL/TLS for all incoming connections.
+- [PASSIVE] Missing X-Frame-Options: Exposes website to Clickjacking vulnerabilities.
+- [PASSIVE] Missing X-Content-Type-Options: Allows browsers to sniff mime types instead of respecting headers.
+- [PHISHING] Phishing Indicator: NLP phishing semantic triggers matching: Phone support number: 1791166609: NLP phishing semantic triggers matching: Phone support number: 1791166609
+- [PHISHING] Phishing Indicator: Form credential capture block identified: Form credential capture block identified
+- [PHISHING] Phishing Indicator: Credential trap: Password fields detected inside HTML forms: Credential trap: Password fields detected inside HTML forms

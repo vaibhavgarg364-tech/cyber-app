@@ -178,7 +178,7 @@ def train_model(real_dir: str, fake_dir: str, output_path: str = "models/patch_c
     dataset = PatchDataset(real_patches, fake_patches)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     
-    device = torch.device("cpu") # Keep CPU friendly
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = ResidualPatchCNN().to(device)
     criterion = nn.BCELoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)

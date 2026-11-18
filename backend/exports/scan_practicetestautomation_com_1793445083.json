@@ -1,0 +1,346 @@
+{
+    "url": "https://practicetestautomation.com/practice-test-login",
+    "verdict": "safe",
+    "runtime_state": {
+        "status": "SCAN_OK",
+        "memory_events": [],
+        "timeouts": [],
+        "ocr_status": "Not Attempted",
+        "playwright_status": "Not Attempted",
+        "vt_quota": "OK",
+        "gsb_quota": "OK",
+        "crawler_failures": 0
+    },
+    "confidence": 0.9,
+    "evidence_gate": [],
+    "threats": [],
+    "malicious_count": 0,
+    "suspicious_count": 0,
+    "safe_count": 67,
+    "harmless_count": 67,
+    "undetected_count": 30,
+    "total_engines": 97,
+    "invalid_domain": false,
+    "connection_status": "Reachable",
+    "virusTotal": {
+        "configured": true,
+        "stats": {
+            "malicious": 0,
+            "suspicious": 0,
+            "harmless": 67,
+            "undetected": 30
+        }
+    },
+    "googleSafeBrowsing": {
+        "configured": true,
+        "matches": []
+    },
+    "redirectChain": [
+        "https://practicetestautomation.com/practice-test-login"
+    ],
+    "sslInfo": {
+        "https": true,
+        "cert_validity_days": 30
+    },
+    "domainEntropy": 0.0,
+    "findings": [
+        "Missing Content-Security-Policy",
+        "Missing HSTS",
+        "Missing X-Frame-Options",
+        "Missing X-Content-Type-Options"
+    ],
+    "details": [
+        "Missing Content-Security-Policy: High risk of Cross-Site Scripting (XSS) attacks.",
+        "Missing HSTS: Site does not enforce SSL/TLS for all incoming connections.",
+        "Missing X-Frame-Options: Exposes website to Clickjacking vulnerabilities.",
+        "Missing X-Content-Type-Options: Allows browsers to sniff mime types instead of respecting headers."
+    ],
+    "domainInfo": {
+        "registeredDate": "Unknown",
+        "age": "Known/Established",
+        "reputation": "safe"
+    },
+    "recommendations": [
+        "Exercise normal caution.",
+        "Verify the sender before opening.",
+        "Configure a strict Content-Security-Policy header.",
+        "Add the Strict-Transport-Security header to force HTTPS."
+    ],
+    "englishSummary": "Research scanner completed successfully.",
+    "hindiSummary": "\u0938\u094d\u0915\u0948\u0928 \u092a\u0942\u0930\u093e \u0939\u094b \u091a\u0941\u0915\u093e \u0939\u0948\u0964 \u0915\u0943\u092a\u092f\u093e \u0905\u092a\u0928\u0940 \u0938\u0941\u0930\u0915\u094d\u0937\u093e \u0938\u094d\u0925\u093f\u0924\u093f \u0914\u0930 \u0930\u093f\u092a\u094b\u0930\u094d\u091f \u0926\u0947\u0916\u0947\u0902\u0964",
+    "findings_details": [
+        {
+            "type": "Missing Content-Security-Policy",
+            "category": "passive",
+            "severity": "medium",
+            "cvss_score": 6.1,
+            "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N",
+            "evidence": "High risk of Cross-Site Scripting (XSS) attacks.",
+            "remediation": "Configure a strict Content-Security-Policy header."
+        },
+        {
+            "type": "Missing HSTS",
+            "category": "passive",
+            "severity": "low",
+            "cvss_score": 3.7,
+            "cvss_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:N",
+            "evidence": "Site does not enforce SSL/TLS for all incoming connections.",
+            "remediation": "Add the Strict-Transport-Security header to force HTTPS."
+        },
+        {
+            "type": "Missing X-Frame-Options",
+            "category": "passive",
+            "severity": "low",
+            "cvss_score": 3.7,
+            "cvss_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:N",
+            "evidence": "Exposes website to Clickjacking vulnerabilities.",
+            "remediation": "Add X-Frame-Options header (DENY or SAMEORIGIN)."
+        },
+        {
+            "type": "Missing X-Content-Type-Options",
+            "category": "passive",
+            "severity": "low",
+            "cvss_score": 3.7,
+            "cvss_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:N",
+            "evidence": "Allows browsers to sniff mime types instead of respecting headers.",
+            "remediation": "Set X-Content-Type-Options: nosniff."
+        }
+    ],
+    "fusion_report": {
+        "fusion_score": 0.9,
+        "verdict": "SAFE",
+        "evidence_gate": [],
+        "confidence": 0.9,
+        "breakdown": {
+            "passive": 0.3,
+            "active": 0.0,
+            "threat_intel": 0.0,
+            "anomaly": 0.0
+        }
+    },
+    "crawler_summary": {
+        "spider_crawled_urls": [
+            "https://practicetestautomation.com/practice-test-login#main-container",
+            "https://practicetestautomation.com/",
+            "https://practicetestautomation.com/practice/",
+            "https://practicetestautomation.com/courses/",
+            "https://practicetestautomation.com/workshop",
+            "https://practicetestautomation.com/blog/",
+            "https://practicetestautomation.com/contact/",
+            "https://practicetestautomation.com/privacy-policy/"
+        ],
+        "headless_crawler": "Skipped",
+        "dynamic_routes_discovered": [
+            {
+                "path": "/admin",
+                "status_code": 200
+            },
+            {
+                "path": "/login",
+                "status_code": 200
+            },
+            {
+                "path": "/dashboard",
+                "status_code": 200
+            },
+            {
+                "path": "/wp-admin",
+                "status_code": 200
+            },
+            {
+                "path": "/test",
+                "status_code": 200
+            },
+            {
+                "path": "/dev",
+                "status_code": 200
+            }
+        ],
+        "screenshot_path": ""
+    },
+    "phishing_report": {
+        "phishing_risk_score": 0.1775,
+        "verdict": "LOW RISK",
+        "impersonated_brand": "None",
+        "evidence_chain": [
+            "Form credential capture block identified",
+            "Credential trap: Password fields detected inside HTML forms"
+        ],
+        "forced_override": false,
+        "scores": {
+            "domain": 0.0,
+            "visual": 0.0,
+            "nlp": 0.0,
+            "behavior": 0.85,
+            "structure": 0.5,
+            "reputation": 0.0
+        },
+        "domain_details": {
+            "domain_risk_score": 0.0,
+            "brand_match": null,
+            "spoof_confidence": 0.0,
+            "typosquat_score": 0.0,
+            "unicode_spoof": false,
+            "tld_risk": false,
+            "suspicious_subdomains_count": 0,
+            "crypto_keyword_detected": false,
+            "support_keyword_detected": false,
+            "confusable_similarity_score": 0.2272727272727273
+        },
+        "visual_details": {
+            "visual_risk_score": 0.0,
+            "brand_impersonated": null,
+            "title_mismatch": false,
+            "logo_consistency_violation": false,
+            "ocr_findings": [],
+            "favicon_hash": "46fb9f0ee9b5fc579a36b9685024af9a",
+            "login_detected": true,
+            "otp_traps": false,
+            "support_scam": false,
+            "support_scam_title_match": false,
+            "perceptual_hash": "0000000000000000",
+            "ocr_extracted_len": 0
+        },
+        "nlp_details": {
+            "language_risk_score": 0.0,
+            "confidence": 0.0,
+            "matched_phrases": [],
+            "phone_detected": false,
+            "remote_support_detected": false
+        },
+        "behavior_details": {
+            "behavior_score": 0.85,
+            "meta_refresh": false,
+            "popup_storm": false,
+            "hidden_links": false,
+            "auto_download": false,
+            "fullscreen_trap": false,
+            "overlay_attack": true,
+            "reasons": [
+                "Form credential capture block identified"
+            ]
+        },
+        "structure_details": {
+            "credential_harvest_score": 0.5,
+            "form_count": 0,
+            "password_count": 1,
+            "otp_count": 0,
+            "card_count": 0,
+            "wallet_count": 0,
+            "bank_login": false,
+            "iframe_usage": false,
+            "external_scripts_count": 5
+        }
+    },
+    "normalized_url": "https://practicetestautomation.com/practice-test-login",
+    "original_input": "https://practicetestautomation.com/practice-test-login",
+    "hostname": "practicetestautomation.com",
+    "overall_status": "Low Risk",
+    "risk_score": 20,
+    "confidence_percent": 100,
+    "confidence_label": "Confidence reflects heuristics and reputation API results",
+    "technical_checks": [
+        {
+            "check": "HTTPS",
+            "passed": true,
+            "detail": "Connection uses HTTPS"
+        },
+        {
+            "check": "IP Address URL",
+            "passed": true,
+            "detail": "Hostname is a domain name"
+        },
+        {
+            "check": "Embedded Credentials",
+            "passed": true,
+            "detail": "No credentials embedded"
+        },
+        {
+            "check": "URL Shortener",
+            "passed": true,
+            "detail": "Not a known URL shortener"
+        },
+        {
+            "check": "Punycode / Homograph",
+            "passed": true,
+            "detail": "No homograph pattern detected"
+        },
+        {
+            "check": "Suspicious TLD",
+            "passed": true,
+            "detail": "TLD is not high-risk"
+        },
+        {
+            "check": "Excessive Subdomains",
+            "passed": true,
+            "detail": "Subdomain depth: 0"
+        },
+        {
+            "check": "URL Length",
+            "passed": true,
+            "detail": "54 chars \u2014 acceptable"
+        },
+        {
+            "check": "High Entropy Path",
+            "passed": true,
+            "detail": "Entropy 3.7 \u2014 normal"
+        },
+        {
+            "check": "Suspicious Keywords",
+            "passed": false,
+            "detail": "Suspicious: login"
+        },
+        {
+            "check": "Suspicious Port",
+            "passed": true,
+            "detail": "Standard port"
+        }
+    ],
+    "score_factors": [
+        {
+            "factor": "Suspicious keywords in URL",
+            "impact": 20
+        }
+    ],
+    "threat_indicators": [
+        "Suspicious keywords: login"
+    ],
+    "api_status": {
+        "virustotal": {
+            "configured": true,
+            "used": true,
+            "label": "VirusTotal"
+        },
+        "google_safe_browsing": {
+            "configured": true,
+            "used": true,
+            "label": "Google Safe Browsing"
+        },
+        "heuristics": {
+            "configured": true,
+            "used": true,
+            "label": "Local Heuristics"
+        }
+    },
+    "observability": {
+        "durations": {
+            "recon": 5.473065137863159,
+            "crawler": 8.953577041625977,
+            "passive": 0.0034117698669433594,
+            "active": 0.007406473159790039,
+            "threat_intel": 1.7902753353118896,
+            "phishing": 0.22072148323059082,
+            "fusion": 1.2636184692382812e-05,
+            "reporting": 1.5112102031707764,
+            "total_scan": 17.96262216567993,
+            "memory_delta_mb": 32.3515625
+        },
+        "cache_stats": {
+            "hits": 0,
+            "misses": 1
+        },
+        "memory_usage_mb": 846.18359375,
+        "timeouts_encountered": 2,
+        "api_failures": 0
+    }
+}

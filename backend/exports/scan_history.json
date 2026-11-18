@@ -274,5 +274,77 @@
         "timestamp": 1791391562,
         "verdict": "safe",
         "findings_count": 4
+    },
+    {
+        "url": "https://mybank.secure-login-portal.net",
+        "timestamp": 1791441221,
+        "verdict": "safe",
+        "findings_count": 4
+    },
+    {
+        "url": "https://google",
+        "timestamp": 1791441251,
+        "verdict": "safe",
+        "findings_count": 4
+    },
+    {
+        "url": "https://ibmpogram.com",
+        "timestamp": 1791448594,
+        "verdict": "safe",
+        "findings_count": 4
+    },
+    {
+        "url": "https://spotify-premium-apk.apkpure.co.in",
+        "timestamp": 1791458741,
+        "verdict": "suspicious",
+        "findings_count": 8
+    },
+    {
+        "url": "https://modplays.com/apps/entertainment/spotify",
+        "timestamp": 1793428000,
+        "verdict": "suspicious",
+        "findings_count": 7
+    },
+    {
+        "url": "https://practicetestautomation.com/practice-test-login",
+        "timestamp": 1793445083,
+        "verdict": "safe",
+        "findings_count": 4
+    },
+    {
+        "url": "https://urlto.me/22pKa",
+        "timestamp": 1793445212,
+        "verdict": "safe",
+        "findings_count": 4
+    },
+    {
+        "url": "https://secure-login-update-banking.xyz",
+        "timestamp": 1794991470,
+        "verdict": "suspicious",
+        "findings_count": 4
+    },
+    {
+        "url": "https://secure-login-update-banking.xyz",
+        "timestamp": 1794991564,
+        "verdict": "suspicious",
+        "findings_count": 4
+    },
+    {
+        "url": "https://secure-login-update-banking.xyz",
+        "timestamp": 1794991677,
+        "verdict": "suspicious",
+        "findings_count": 4
+    },
+    {
+        "url": "https://secure-login-update-banking.xyz",
+        "timestamp": 1794991759,
+        "verdict": "suspicious",
+        "findings_count": 4
+    },
+    {
+        "url": "https://br-icloud.com.br",
+        "timestamp": 1794992845,
+        "verdict": "dangerous",
+        "findings_count": 4
     }
 ]

@@ -34,6 +34,10 @@ mp_detector_api = "unavailable"
 mp_import_error = None
 MP_FACE_MODEL_PATH = Path(__file__).resolve().parents[1] / "models" / "blaze_face_short_range.tflite"
 os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "veyron-matplotlib"))
+for _hf_cand in [Path("D:/AI_CACHE/huggingface"), Path("D:/DevCache/huggingface")]:
+    if _hf_cand.exists():
+        os.environ.setdefault("HF_HOME", str(_hf_cand))
+        break
 
 try:
     import mediapipe as mp
@@ -1516,8 +1520,12 @@ class AIEnsembleClassifier:
                 import torch
                 from transformers import AutoImageProcessor, AutoModelForImageClassification
                 logger.info(f"[Ensemble] Loading specialized detector 'umm-maybe/AI-image-detector' on {self.device}...")
-                proc = AutoImageProcessor.from_pretrained("umm-maybe/AI-image-detector")
-                mod = AutoModelForImageClassification.from_pretrained("umm-maybe/AI-image-detector").to(self.device)
+                try:
+                    proc = AutoImageProcessor.from_pretrained("umm-maybe/AI-image-detector", local_files_only=True)
+                    mod = AutoModelForImageClassification.from_pretrained("umm-maybe/AI-image-detector", local_files_only=True).to(self.device)
+                except Exception:
+                    proc = AutoImageProcessor.from_pretrained("umm-maybe/AI-image-detector")
+                    mod = AutoModelForImageClassification.from_pretrained("umm-maybe/AI-image-detector").to(self.device)
                 mod.eval()
                 AIEnsembleClassifier._spec_processor = proc
                 AIEnsembleClassifier._spec_model = mod
@@ -1533,8 +1541,12 @@ class AIEnsembleClassifier:
                 import torch
                 from transformers import CLIPProcessor, CLIPModel
                 logger.info(f"[Ensemble] Loading CLIP 'openai/clip-vit-base-patch32' on {self.device}...")
-                proc = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
-                mod = CLIPModel.from_pretrained("openai/clip-vit-base-patch32").to(self.device)
+                try:
+                    proc = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32", local_files_only=True)
+                    mod = CLIPModel.from_pretrained("openai/clip-vit-base-patch32", local_files_only=True).to(self.device)
+                except Exception:
+                    proc = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+                    mod = CLIPModel.from_pretrained("openai/clip-vit-base-patch32").to(self.device)
                 mod.eval()
                 AIEnsembleClassifier._clip_processor = proc
                 AIEnsembleClassifier._clip_model = mod

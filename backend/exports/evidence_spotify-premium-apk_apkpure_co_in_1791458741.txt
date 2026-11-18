@@ -1,0 +1,14 @@
+EVIDENCE DOSSIER FOR https://spotify-premium-apk.apkpure.co.in
+============================================================
+Verdict: SUSPICIOUS
+Confidence: 0.6
+
+Findings Details:
+- [PASSIVE] Missing Content-Security-Policy: High risk of Cross-Site Scripting (XSS) attacks.
+- [PASSIVE] Missing HSTS: Site does not enforce SSL/TLS for all incoming connections.
+- [PASSIVE] Missing X-Frame-Options: Exposes website to Clickjacking vulnerabilities.
+- [PASSIVE] Missing X-Content-Type-Options: Allows browsers to sniff mime types instead of respecting headers.
+- [PASSIVE] Mixed Content Detected: Active resources (images/scripts) loaded insecurely over HTTP.
+- [PHISHING] Phishing Indicator: Brand logo files found on an unauthorized third-party server: Brand logo files found on an unauthorized third-party server
+- [PHISHING] Phishing Indicator: NLP phishing semantic triggers matching: Phone support number: 1702180711319: NLP phishing semantic triggers matching: Phone support number: 1702180711319
+- [PHISHING] Phishing Indicator: Automated executable software payload package links (.apk/.exe): Automated executable software payload package links (.apk/.exe)
