@@ -19,4 +19,11 @@ export function getCyberCell(params?: {
   state?: string;
   lat?: number;
   lng?: number;
+  isGps?: boolean;
+}): Promise<any>;
+
+export function generateComplaintDraft(params?: {
+  incidentDesc?: string;
+  incidentType?: string;
+  userState?: string;
 }): Promise<any>;

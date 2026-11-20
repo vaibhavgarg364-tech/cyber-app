@@ -18,6 +18,7 @@ import {
   ChevronUp,
   Copy,
   Check,
+  LucideIcon,
 } from 'lucide-react';
 import { useLang } from '../context/LanguageContext';
 import { detectDeepfake } from '../api';
@@ -68,8 +69,8 @@ interface DebugAnalysis {
   clip_status: string;
   clip_raw_real_scores: Record<string, number>;
   clip_raw_ai_scores: Record<string, number>;
-  clip_aggregate_score: number;
-  clip_confidence: number;
+  clip_aggregate_score?: number | null;
+  clip_confidence?: number | null;
   specialized_detector: {
     model_name: string;
     available: boolean;
@@ -116,13 +117,13 @@ interface AnalysisResult {
   action: string;
   context?: string;
   debugAnalysis?: DebugAnalysis;
-  provenance?: any;
+  provenance?: Record<string, unknown> | null;
 }
 
 const decisiveVerdictConfigs: Record<
   DecisiveVerdict,
   {
-    icon: any;
+    icon: LucideIcon;
     color: string;
     border: string;
     bg: string;
@@ -665,12 +666,17 @@ export default function DeepfakeDetector() {
                       <span>
                         CLIP Score:{' '}
                         <strong className="text-cyan-300">
-                          {result.debugAnalysis?.clip_available
-                            ? `${((result.debugAnalysis?.clip_aggregate_score ?? 0) * 100).toFixed(1)}%`
+                          {result.debugAnalysis?.clip_available && typeof result.debugAnalysis?.clip_aggregate_score === 'number'
+                            ? `${(result.debugAnalysis.clip_aggregate_score * 100).toFixed(1)}%`
                             : 'N/A (Unavailable)'}
                         </strong>
                       </span>
-                      <span>Confidence: {result.debugAnalysis?.clip_confidence ?? 0}</span>
+                      <span>
+                        Confidence:{' '}
+                        {result.debugAnalysis?.clip_available && typeof result.debugAnalysis?.clip_confidence === 'number'
+                          ? `${(result.debugAnalysis.clip_confidence * 100).toFixed(1)}%`
+                          : 'N/A'}
+                      </span>
                     </div>
                   </div>
                 </div>

@@ -5,7 +5,7 @@
     "lastVerified": "2026-03-11",
     "emergencyHelpline": "1930",
     "nationalPortal": "https://cybercrime.gov.in",
-    "note": "Phone/email are State/UT NCRP nodal or grievance contacts from I4C. Coordinates point to state/UT cyber police headquarters or capital police headquarters for nearest-office routing."
+    "note": "Phone/email are State/UT NCRP nodal or grievance contacts from I4C. Coordinates are routing-reference points used for nearest-office selection and straight-line distance calculations, while Directions navigation uses verified police station destinations."
   },
   "states": [
     {
@@ -192,9 +192,9 @@
       "name": "Uttarakhand",
       "type": "State",
       "region": "North",
-      "hq": {"city": "Dehradun", "address": "Cyber Crime Police Station, STF / Police Headquarters, Dehradun, Uttarakhand", "phone": "0135-2651689", "email": "ccps.deh@uttarakhandpolice.uk.gov.in", "lat": 30.3165, "lng": 78.0322},
+      "hq": {"city": "Dehradun", "address": "Cyber Crime Police Station, Special Task Force (STF), Near Fire Station, Gandhi Road, Dehradun, Uttarakhand 248001", "phone": "0135-2651689", "email": "ccps.deh@uttarakhandpolice.uk.gov.in", "lat": 30.3165, "lng": 78.0322},
       "offices": [
-        {"city": "Dehradun", "address": "Cyber Crime Police Station, STF / Police Headquarters, Dehradun", "phone": "0135-2651689", "email": "ccps.deh@uttarakhandpolice.uk.gov.in", "lat": 30.3165, "lng": 78.0322},
+        {"city": "Dehradun", "address": "Cyber Crime Police Station, Special Task Force (STF), Near Fire Station, Gandhi Road, Dehradun, Uttarakhand 248001", "phone": "0135-2651689", "email": "ccps.deh@uttarakhandpolice.uk.gov.in", "lat": 30.3165, "lng": 78.0322},
         {"city": "Haridwar", "address": "District Cyber Cell, Haridwar Police, Haridwar", "phone": "1930", "email": "ccps.deh@uttarakhandpolice.uk.gov.in", "lat": 29.9457, "lng": 78.1642}
       ]
     },

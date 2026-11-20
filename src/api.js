@@ -168,11 +168,16 @@ export async function getHelplines(incidentType, userState) {
   return request('/get-helplines', { incidentType, userState });
 }
 
-export async function getCyberCell({ state, lat, lng } = {}) {
+export async function getCyberCell({ state, lat, lng, isGps } = {}) {
   const params = new URLSearchParams();
   if (state) params.set('state', state);
   if (typeof lat === 'number') params.set('lat', String(lat));
   if (typeof lng === 'number') params.set('lng', String(lng));
+  if (isGps) params.set('is_gps', 'true');
   const suffix = params.toString() ? `?${params.toString()}` : '';
   return request(`/get-cybercell${suffix}`, {});
+}
+
+export async function generateComplaintDraft({ incidentDesc, incidentType, userState } = {}) {
+  return request('/generate-complaint', { incidentDesc, incidentType, userState });
 }

@@ -27,18 +27,21 @@ interface AppResult {
   summary: string;
   uninstallSteps?: string[];
   officialAlternative?: string;
-  officialPlayLink?: string;
+  officialPlayLink?: string | null;
+  playStoreLink?: string | null;
+  lookupStatus?: string;
 }
 
 const GOV_APPS: Record<string, { official: string; developer: string; pkg: string; link: string }> = {
-  'aadhaar': { official: 'mAadhaar', developer: 'UIDAI', pkg: 'in.gov.uidai.mAadhaarPlus', link: 'https://play.google.com/store/apps/details?id=in.gov.uidai.mAadhaarPlus' },
-  'umang': { official: 'UMANG', developer: 'National e-Governance Division', pkg: 'in.gov.umang.negd.mi', link: 'https://play.google.com/store/apps/details?id=in.gov.umang.negd.mi' },
+  'aadhaar': { official: 'Aadhaar', developer: 'UIDAI', pkg: 'in.gov.uidai.pehchaan', link: 'https://play.google.com/store/apps/details?id=in.gov.uidai.pehchaan' },
+  'maadhaar': { official: 'mAadhaar', developer: 'UIDAI', pkg: 'in.gov.uidai.mAadhaarPlus', link: 'https://play.google.com/store/apps/details?id=in.gov.uidai.mAadhaarPlus' },
+  'umang': { official: 'UMANG', developer: 'National e-Governance Division', pkg: 'in.gov.umang.negd.g2c', link: 'https://play.google.com/store/apps/details?id=in.gov.umang.negd.g2c' },
   'digilocker': { official: 'DigiLocker', developer: 'National e-Governance Division', pkg: 'com.digilocker.android', link: 'https://play.google.com/store/apps/details?id=com.digilocker.android' },
-  'irctc': { official: 'IRCTC Rail Connect', developer: 'Indian Railway Catering And Tourism Corporation Ltd.', pkg: 'ctrail.irctc', link: 'https://play.google.com/store/apps/details?id=ctrail.irctc' },
+  'irctc': { official: 'IRCTC Rail Connect', developer: 'CRIS', pkg: 'cris.org.in.prs.ima', link: 'https://play.google.com/store/apps/details?id=cris.org.in.prs.ima' },
   'bhim': { official: 'BHIM', developer: 'National Payments Corporation of India', pkg: 'in.org.npci.upiapp', link: 'https://play.google.com/store/apps/details?id=in.org.npci.upiapp' },
-  'pm kisan': { official: 'PM Kisan', developer: 'Ministry of Agriculture', pkg: 'com.nic.mop_pmkisan', link: '' },
-  'income tax': { official: 'Income Tax India', developer: 'Directorate of Income Tax (Systems)', pkg: 'com.tax.itaxnewfrom', link: '' },
-  'cowin': { official: 'Aarogya Setu', developer: 'National Informatics Centre', pkg: 'nic.goi.aarogyasetu', link: 'https://play.google.com/store/apps/details?id=nic.goi.aarogyasetu' },
+  'pm kisan': { official: 'PM Kisan', developer: 'Ministry of Agriculture', pkg: 'com.nic.pmkisan', link: 'https://play.google.com/store/apps/details?id=com.nic.pmkisan' },
+  'cowin': { official: 'CoWIN', developer: 'Ministry of Health and Family Welfare', pkg: 'com.cowin.gov.in', link: 'https://play.google.com/store/apps/details?id=com.cowin.gov.in' },
+  'aarogya setu': { official: 'Aarogya Setu', developer: 'National Informatics Centre', pkg: 'nic.goi.aarogyasetu', link: 'https://play.google.com/store/apps/details?id=nic.goi.aarogyasetu' },
 };
 
 const verdictConfig = {
@@ -94,7 +97,13 @@ export default function AppChecker() {
           'Change any passwords entered in the app from a trusted device',
         ] : undefined,
         officialAlternative: data.officialAlternatives?.[0]?.name,
-        officialPlayLink: data.officialAlternatives?.[0]?.playStoreLink,
+        officialPlayLink: typeof data.officialAlternatives?.[0]?.playStoreLink === 'string' && data.officialAlternatives[0].playStoreLink.startsWith('https://play.google.com/')
+          ? data.officialAlternatives[0].playStoreLink
+          : null,
+        playStoreLink: typeof data.playStoreLink === 'string' && data.playStoreLink.startsWith('https://play.google.com/')
+          ? data.playStoreLink
+          : null,
+        lookupStatus: data.lookupStatus,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to check app. Please try again.');
@@ -261,17 +270,44 @@ export default function AppChecker() {
               </div>
             )}
 
-            {/* Official Alternative */}
-            {result.officialAlternative && (
+            {/* Official Store Listing for the Checked Application */}
+            {result.playStoreLink && result.verdict === 'official' && (
+              <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4 mb-4">
+                <p className="text-green-400 font-semibold text-sm mb-1">{t('Official Store Listing:', 'आधिकारिक स्टोर लिस्टिंग:')}</p>
+                <p className="text-white font-medium">{result.appName}</p>
+                <a href={result.playStoreLink} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 mt-2 text-green-400 text-sm hover:text-green-300 transition-colors">
+                  {t('Download from Google Play Store', 'Google Play Store से डाउनलोड करें')} →
+                </a>
+              </div>
+            )}
+
+            {/* Official Alternative (when unverified or suspicious) */}
+            {result.officialAlternative && result.verdict !== 'official' && (
               <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4 mb-4">
                 <p className="text-green-400 font-semibold text-sm mb-1">{t('Official Alternative:', 'आधिकारिक विकल्प:')}</p>
                 <p className="text-white font-medium">{result.officialAlternative}</p>
                 {result.officialPlayLink && (
                   <a href={result.officialPlayLink} target="_blank" rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 mt-2 text-green-400 text-sm hover:text-green-300 transition-colors">
-                    {t('Download from Play Store', 'Play Store से डाउनलोड करें')} →
+                    {t('Download Official Alternative from Play Store', 'Play Store से आधिकारिक विकल्प डाउनलोड करें')} →
                   </a>
                 )}
+              </div>
+            )}
+
+            {/* Unverified Play Store Search fallback when direct listing is unavailable */}
+            {!result.playStoreLink && (
+              <div className="bg-slate-800/40 border border-slate-700/40 rounded-xl p-4 mb-4">
+                <p className="text-slate-400 text-xs mb-1">{t('Direct verified listing unavailable.', 'प्रत्यक्ष सत्यापित लिस्टिंग अनुपलब्ध है।')}</p>
+                <a
+                  href={`https://play.google.com/store/search?q=${encodeURIComponent(result.appName)}&c=apps`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-cyan-400 text-xs hover:text-cyan-300 transition-colors"
+                >
+                  {t('Search on Google Play (Unverified Search)', 'Google Play पर खोजें (अपुष्ट खोज)')} →
+                </a>
               </div>
             )}
 

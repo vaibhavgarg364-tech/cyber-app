@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { FileText, MapPin, Clock, ExternalLink, Copy, CheckCircle, Loader2, Phone, ChevronDown, ChevronUp, Mail, Navigation } from 'lucide-react';
 import { useLang } from '../context/LanguageContext';
-import { getCyberCell, getHelplines } from '../api';
+import { getCyberCell, getHelplines, generateComplaintDraft } from '../api';
 
 const portals = [
   {
@@ -250,6 +250,8 @@ export default function ComplaintHub() {
   const [cyberCellLoading, setCyberCellLoading] = useState(false);
   const [cyberCellError, setCyberCellError] = useState('');
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const requestIdRef = useRef(0);
+  const lastFetchedKeyRef = useRef('');
   const { t } = useLang();
 
   useEffect(() => {
@@ -280,37 +282,37 @@ export default function ComplaintHub() {
   }, [incidentType, selectedState, t]);
 
   useEffect(() => {
-    let active = true;
+    const currentKey = `state:${selectedState}:${coords?.lat ?? ''},${coords?.lng ?? ''}`;
+    if (currentKey === lastFetchedKeyRef.current) {
+      return;
+    }
+    lastFetchedKeyRef.current = currentKey;
+
+    const reqId = ++requestIdRef.current;
+    setCyberCellLoading(true);
+    setCyberCellError('');
+
     async function fetchCyberCell() {
-      setCyberCellLoading(true);
-      setCyberCellError('');
       try {
         const data = await getCyberCell({
           state: selectedState,
           lat: coords?.lat,
           lng: coords?.lng,
         });
-        if (active) {
-          setCyberCell(data);
-          if (data?.state) {
-            setSelectedState(data.state);
-          }
-        }
+        if (reqId !== requestIdRef.current) return;
+        setCyberCell(data);
       } catch {
-        if (active) {
-          setCyberCellError(t('Could not fetch cyber cell details. You can still use complaint portals below.', 'साइबर सेल विवरण नहीं मिल सका। आप नीचे शिकायत पोर्टल का उपयोग कर सकते हैं।'));
-          setCyberCell(null);
-        }
+        if (reqId !== requestIdRef.current) return;
+        lastFetchedKeyRef.current = '';
+        setCyberCellError(t('Could not fetch cyber cell details. You can still use complaint portals below.', 'साइबर सेल विवरण नहीं मिल सका। आप नीचे शिकायत पोर्टल का उपयोग कर सकते हैं।'));
+        setCyberCell(null);
       } finally {
-        if (active) {
+        if (reqId === requestIdRef.current) {
           setCyberCellLoading(false);
         }
       }
     }
     void fetchCyberCell();
-    return () => {
-      active = false;
-    };
   }, [selectedState, coords?.lat, coords?.lng, t]);
 
   function detectLocation() {
@@ -318,17 +320,51 @@ export default function ComplaintHub() {
       setCyberCellError('Geolocation is not available in this browser.');
       return;
     }
+    const geoReqId = ++requestIdRef.current;
     setCyberCellLoading(true);
+    setCyberCellError('');
+
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setCoords({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        });
-        setCyberCellLoading(false);
+      async (position) => {
+        if (geoReqId !== requestIdRef.current) return;
+        const userLat = position.coords.latitude;
+        const userLng = position.coords.longitude;
+        try {
+          const data = await getCyberCell({
+            lat: userLat,
+            lng: userLng,
+            isGps: true,
+          });
+          if (geoReqId !== requestIdRef.current) return;
+          if (data) {
+            lastFetchedKeyRef.current = `state:${data.state || ''}:${userLat},${userLng}`;
+            setCoords({ lat: userLat, lng: userLng });
+            setCyberCell(data);
+            if (data.state) {
+              setSelectedState(data.state);
+            }
+          }
+        } catch {
+          if (geoReqId !== requestIdRef.current) return;
+          lastFetchedKeyRef.current = '';
+          setCyberCellError(t('Could not fetch cyber cell details for your location.', 'आपकी लोकेशन के लिए साइबर सेल विवरण नहीं मिल सका।'));
+          setCyberCell(null);
+        } finally {
+          if (geoReqId === requestIdRef.current) {
+            setCyberCellLoading(false);
+          }
+        }
       },
-      () => {
-        setCyberCellError('Location permission denied. Select your state manually.');
+      (geoError) => {
+        if (geoReqId !== requestIdRef.current) return;
+        let msg = 'Location permission denied. Select your state manually.';
+        if (geoError?.code === 2) {
+          msg = 'Location unavailable. Select your state manually.';
+        } else if (geoError?.code === 3) {
+          msg = 'Location request timed out. Select your state manually.';
+        }
+        setCyberCell(null);
+        setCyberCellError(msg);
         setCyberCellLoading(false);
       },
       { enableHighAccuracy: true, timeout: 10000 }
@@ -338,9 +374,22 @@ export default function ComplaintHub() {
   async function generateComplaint() {
     if (!incidentDesc.trim()) return;
     setGenerating(true);
-    await new Promise((r) => setTimeout(r, 1500));
-    setDraft(generateDraft(incidentDesc));
-    setGenerating(false);
+    try {
+      const resp = await generateComplaintDraft({
+        incidentDesc,
+        incidentType,
+        userState: selectedState,
+      });
+      if (resp?.draft) {
+        setDraft(resp.draft);
+      } else {
+        setDraft(generateDraft(incidentDesc));
+      }
+    } catch {
+      setDraft(generateDraft(incidentDesc));
+    } finally {
+      setGenerating(false);
+    }
   }
 
   function copy() {
@@ -396,9 +445,10 @@ export default function ComplaintHub() {
     if (FINANCIAL_INCIDENTS.has(incidentType) && portal.id === 'rbi') return true;
     return allowed.has(portal.id);
   });
-  const stateCell = cyberCell?.nearestOffice;
-  const mapSrc = stateCell?.lat && stateCell?.lng
-    ? `https://www.google.com/maps?q=${stateCell.lat},${stateCell.lng}&z=12&output=embed`
+  const stateCell = cyberCell?.nearestOffice || cyberCell?.hq;
+  const mapQuery = stateCell?.address || (stateCell?.lat && stateCell?.lng ? `${stateCell.lat},${stateCell.lng}` : '');
+  const mapSrc = mapQuery
+    ? `https://www.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=13&output=embed`
     : '';
 
   return (
@@ -542,7 +592,7 @@ export default function ComplaintHub() {
                   <div>
                     <p className="text-white font-semibold">{cyberCell?.state} Cyber Cell</p>
                     <p className="text-slate-500 text-sm">
-                      {stateCell.city}{stateCell.distanceKm != null ? ` - ${stateCell.distanceKm} km away` : ''}
+                      {stateCell.city}{stateCell.distanceKm != null ? ` - ${stateCell.distanceKm} km (straight-line distance)` : ''}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">

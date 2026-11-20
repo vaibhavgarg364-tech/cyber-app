@@ -198,6 +198,8 @@ class EnsembleResult:
     inference_time_total: float
     weights: Dict[str, float]
     detail: str
+    clip_result: Optional[Dict[str, Any]] = None
+    specialized_result: Optional[ModelResult] = None
 
 def _clamp(x: float, lo: float = 0.0, hi: float = 1.0) -> float:
     return float(max(lo, min(hi, x)))
@@ -1486,10 +1488,10 @@ class AIEnsembleClassifier:
             "notes": "Primary specialized Swin synthetic detector"
         },
         "openai/clip-vit-base-patch32": {
-            "weight": 0.05,
-            "discrimination": 0.20,
-            "calibration_reliability": 0.30,
-            "notes": "Secondary zero-shot semantic correlation only"
+            "weight": 0.20,
+            "discrimination": 0.50,
+            "calibration_reliability": 0.60,
+            "notes": "Secondary zero-shot semantic correlation"
         }
     }
     
@@ -1510,7 +1512,17 @@ class AIEnsembleClassifier:
 
     @property
     def device(self) -> str:
-        return AIEnsembleClassifier._device or "cpu"
+        return AIEnsembleClassifier.get_device()
+
+    @classmethod
+    def get_device(cls) -> str:
+        if cls._device is None:
+            try:
+                import torch
+                cls._device = "cuda" if torch.cuda.is_available() else "cpu"
+            except Exception:
+                cls._device = "cpu"
+        return cls._device
 
     def _ensure_specialized(self):
         with self._lock:
@@ -1685,15 +1697,15 @@ class AIEnsembleClassifier:
 
         total_time = time.perf_counter() - t0
 
-        # Weights: Specialized has 0.95 primary weight, CLIP has max 0.05 secondary weight
+        # Weights: Specialized has 0.80 primary weight, CLIP has 0.20 secondary weight
         weights = {}
         if spec_res.available and clip_res["available"]:
-            weights["umm-maybe/AI-image-detector"] = 0.95
-            weights["openai/clip-vit-base-patch32"] = 0.05
-            ens_score = 0.95 * spec_res.ai_probability + 0.05 * clip_res["aggregate_score"]
+            weights["umm-maybe/AI-image-detector"] = 0.80
+            weights["openai/clip-vit-base-patch32"] = 0.20
+            ens_score = 0.80 * spec_res.ai_probability + 0.20 * clip_res["aggregate_score"]
             agreement = 1.0 - abs(spec_res.ai_probability - clip_res["aggregate_score"])
             disagreement = agreement < 0.60
-            ens_conf = spec_res.confidence * 0.9 + clip_res["confidence"] * 0.1
+            ens_conf = spec_res.confidence * 0.8 + clip_res["confidence"] * 0.2
         elif spec_res.available:
             weights["umm-maybe/AI-image-detector"] = 1.0
             ens_score = spec_res.ai_probability
@@ -1717,7 +1729,9 @@ class AIEnsembleClassifier:
                 disagreement=True,
                 inference_time_total=total_time,
                 weights={},
-                detail="All ML models unavailable"
+                detail="All ML models unavailable",
+                clip_result=clip_res,
+                specialized_result=spec_res
             )
 
         clip_ai_str = "MODEL_UNAVAILABLE" if not clip_res.get("available") else f"{clip_res.get('aggregate_score', 0.0):.3f}"
@@ -1735,7 +1749,9 @@ class AIEnsembleClassifier:
             disagreement=bool(disagreement),
             inference_time_total=total_time,
             weights=weights,
-            detail=summary
+            detail=summary,
+            clip_result=clip_res,
+            specialized_result=spec_res
         )
 
 def _get_classifier() -> AIEnsembleClassifier:
@@ -1777,17 +1793,16 @@ UNSTABLE_SIGNAL_KEYS = {
 def _calibrate_ml_probability(raw_probability: float) -> Tuple[float, float, Dict[str, Any]]:
     raw = _clamp(float(raw_probability), 1e-4, 1.0 - 1e-4)
     logit = float(np.log(raw / (1.0 - raw)))
-    # UPGRADE: Reduced temperature, disabled compression, and set widened uncertainty to 0.85
-    temperature = float(os.environ.get("VEYRON_ML_TEMPERATURE", "1.15"))
+    temperature = float(os.environ.get("VEYRON_ML_TEMPERATURE", "1.05"))
     compression = float(os.environ.get("VEYRON_ML_PROBABILITY_COMPRESSION", "1.0"))
-    widened_uncertainty = float(os.environ.get("VEYRON_ML_UNCERTAINTY_WIDENING", "0.85"))
+    widened_uncertainty = float(os.environ.get("VEYRON_ML_UNCERTAINTY_WIDENING", "1.0"))
     
     temp_scaled = 1.0 / (1.0 + np.exp(-(logit / max(temperature, 1e-3))))
     compressed = 0.5 + (temp_scaled - 0.5) * compression
     calibrated = _clamp(compressed)
     
-    # Confidence reflects how far from 0.5 we are, scaled by uncertainty widening
-    confidence = _clamp(abs(calibrated - 0.5) * 2.0 * widened_uncertainty)
+    # Realistic confidence: measures distance from decision threshold without collapsing to near-zero
+    confidence = _clamp(max(0.50, 0.50 + abs(calibrated - 0.5) * widened_uncertainty))
     
     logger.debug(
         "[Calibration Production Debug] raw=%.4f, logit=%.4f, temp=%.3f, "
@@ -1832,11 +1847,10 @@ def _dynamic_signal_weight(s: SignalResult) -> Tuple[float, str]:
         weight *= 0.55
         weight_reason = "reduced because low-confidence evidence is close to neutral"
     if s.category == "ml_classifier":
-        weight *= max(0.42, min(0.92, 0.38 + strength))
-        weight_reason = "scaled by calibrated classifier confidence"
-        
-    # Scale weight by individual signal confidence
-    if s.confidence is not None and s.key not in UNSTABLE_SIGNAL_KEYS:
+        weight *= max(0.55, min(1.0, 0.50 + 0.50 * strength))
+        weight_reason = "scaled by classifier confidence"
+    elif s.confidence is not None and s.key not in UNSTABLE_SIGNAL_KEYS:
+        # Scale weight by individual signal confidence for non-ML signals
         weight *= s.confidence
         weight_reason += f" scaled by signal confidence {s.confidence:.2f}"
         
@@ -2237,8 +2251,8 @@ def fuse_signals(
     ctype = ctype_info["type"]
     debug_info = ctype_info.get("debug_info", {})
     prov_data = prov_data or {}
-    classifier = _get_classifier()
-    clip_res = getattr(classifier, "_last_clip_result", {}) or {}
+    device = AIEnsembleClassifier.get_device()
+    clip_res = (ensemble_result.clip_result if (ensemble_result and hasattr(ensemble_result, "clip_result") and ensemble_result.clip_result) else {}) or {}
 
     c2pa_info = prov_data.get("c2pa", {})
     google_info = prov_data.get("google_provenance", {})
@@ -2271,9 +2285,9 @@ def fuse_signals(
             "clip_status": "MODEL_UNAVAILABLE",
             "clip_raw_real_scores": {},
             "clip_raw_ai_scores": {},
-            "clip_aggregate_score": 0.0,
-            "clip_confidence": 0.0,
-            "specialized_detector": {"model_name": "umm-maybe/AI-image-detector", "available": False, "score": 0.5, "confidence": 0.0, "device": classifier.device},
+            "clip_aggregate_score": None,
+            "clip_confidence": None,
+            "specialized_detector": {"model_name": "umm-maybe/AI-image-detector", "available": False, "score": 0.5, "confidence": 0.0, "device": device},
             "every_forensic_signal_score": {},
             "forensic_aggregate_score": 0.5,
             "camera_provenance_score": cam_prov,
@@ -2285,7 +2299,7 @@ def fuse_signals(
             "final_fusion_score": 0.5,
             "final_verdict": "UNCERTAIN",
             "final_confidence": 0.0,
-            "device": classifier.device,
+            "device": device,
             "decision_hierarchy_level_triggered": "LEVEL_6_UNCERTAIN",
             "verdict_reason": "Image dimensions are too small for reliable forensic analysis (max side < 200px).",
             "google_provenance": google_info,
@@ -2349,13 +2363,13 @@ def fuse_signals(
     all_signals = signals + ml_signals + patch_signals
     _, evidence_weight, category_breakdown = _weighted_signal_score(all_signals)
 
-    spec_model_res = next((r for r in ensemble_result.results if "umm-maybe" in r.model_name), None)
-    clip_model_res = next((r for r in ensemble_result.results if "clip" in r.model_name.lower()), None)
+    spec_model_res = (ensemble_result.specialized_result if (ensemble_result and hasattr(ensemble_result, "specialized_result") and ensemble_result.specialized_result) else next((r for r in ensemble_result.results if "umm-maybe" in r.model_name), None)) if ensemble_result else None
+    clip_model_res = next((r for r in ensemble_result.results if "clip" in r.model_name.lower()), None) if ensemble_result else None
 
     spec_ai = float(spec_model_res.ai_probability) if (spec_model_res and spec_model_res.available) else 0.50
     spec_conf = float(spec_model_res.confidence) if (spec_model_res and spec_model_res.available) else 0.0
-    clip_ai = float(clip_model_res.ai_probability) if (clip_model_res and clip_model_res.available) else 0.0
-    clip_avail = bool(clip_model_res and clip_model_res.available)
+    clip_ai = float(clip_model_res.ai_probability) if (clip_model_res and clip_model_res.available) else float(clip_res.get("aggregate_score", 0.0) if clip_res else 0.0)
+    clip_avail = bool(clip_model_res and clip_model_res.available) or bool(clip_res and clip_res.get("available"))
 
     forensic_active = [s for s in all_signals if s.status == "active" and s.category != "ml_classifier"]
     forensic_consensus_score, forensic_consensus_state = _compute_forensic_consensus(forensic_active)
@@ -2363,14 +2377,20 @@ def fuse_signals(
     sensor_sig = next((s for s in signals if s.key == "sensor_noise"), None)
     sensor_score = sensor_sig.score if (sensor_sig and sensor_sig.status == "active") else 0.50
 
-    manip_prob = float(np.mean([s.score for s in all_signals if s.key not in UNSTABLE_SIGNAL_KEYS and s.category in {"compression_ela", "frequency_domain", "diffusion_artifact", "patch_artifact", "facial_forensics"}])) if all_signals else 0.5
+    manip_scores = [s.score for s in all_signals if s.key not in UNSTABLE_SIGNAL_KEYS and s.category in {"compression_ela", "frequency_domain", "diffusion_artifact", "patch_artifact", "facial_forensics"}]
+    manip_prob = float(np.mean(manip_scores)) if manip_scores else 0.5
+    if np.isnan(manip_prob):
+        manip_prob = 0.5
 
-    # Continuous soft fusion for Levels 4/5
-    w_spec = 0.60
-    w_forensic = 0.35
-    w_clip = 0.05 if clip_avail else 0.0
+    # Continuous soft fusion for Levels 4/5: balanced weights giving CLIP real contribution without single-model dominance
+    w_spec = 0.50 if (spec_model_res and spec_model_res.available) else 0.0
+    w_forensic = 0.30
+    w_clip = 0.20 if clip_avail else 0.0
     total_weights = w_spec + w_forensic + w_clip
-    fusion_score = float((w_spec * spec_ai + w_forensic * forensic_consensus_score + w_clip * clip_ai) / total_weights)
+    if total_weights > 0:
+        fusion_score = float((w_spec * spec_ai + w_forensic * forensic_consensus_score + w_clip * clip_ai) / total_weights)
+    else:
+        fusion_score = float(forensic_consensus_score)
 
     # --- 6-LEVEL HIERARCHICAL DECISION ENGINE ---
     decision_level = "LEVEL_6_UNCERTAIN"
@@ -2426,7 +2446,7 @@ def fuse_signals(
         gen_tool = prov_data.get("generator_tool") or "Generative AI software"
         reason = f"Explicit generative AI tooling signature identified in image metadata: {gen_tool}."
 
-    # LEVEL 3: SPECIALIZED AI DETECTOR
+    # LEVEL 3: SPECIALIZED AI DETECTOR (Non-veto: requires lack of strong counter-signals)
     elif spec_model_res and spec_model_res.available and spec_ai >= 0.70:
         verdict = "LIKELY_AI"
         assessment = "likely_ai"
@@ -2435,7 +2455,7 @@ def fuse_signals(
         decision_level = "LEVEL_3_SPECIALIZED_DETECTOR"
         reason = f"Specialized synthetic-image detector favors AI generation ({spec_ai*100:.1f}%), corroborated by forensic texture analysis."
 
-    elif spec_model_res and spec_model_res.available and spec_ai <= 0.25:
+    elif spec_model_res and spec_model_res.available and spec_ai <= 0.25 and not (clip_avail and clip_ai >= 0.65):
         software_val = str(prov_data.get("software_tag") or "").lower()
         is_editor_software = any(ed in software_val for ed in ["photoshop", "gimp", "lightroom", "canva", "picsart", "photopea", "snapseed", "affinity"])
 
@@ -2464,7 +2484,7 @@ def fuse_signals(
             decision_level = "LEVEL_3_SPECIALIZED_DETECTOR"
             reason = f"Specialized synthetic detector and physical sensor noise favor authentic camera capture (human probability: {(1.0-spec_ai)*100:.1f}%)."
 
-    # LEVEL 4: FORENSIC IMAGE SIGNALS & TAMPERING
+    # LEVEL 4: FORENSIC IMAGE SIGNALS & CONTINUOUS ENSEMBLE FUSION
     elif (patch_result.available and patch_result.clustering_score > 0.75) or (manip_prob > 0.72):
         verdict = "MANIPULATED"
         assessment = "manipulated"
@@ -2473,19 +2493,19 @@ def fuse_signals(
         decision_level = "LEVEL_4_FORENSIC_MANIPULATION"
         reason = "Local compression, ELA, and spatial texture anomalies indicate selective manipulation or splicing."
 
-    elif fusion_score >= 0.65:
+    elif fusion_score >= 0.58 or (spec_ai >= 0.55 and clip_avail and clip_ai >= 0.58):
         verdict = "LIKELY_AI"
         assessment = "likely_ai"
         color = "red"
-        confidence_calibration = min(0.85, 0.5 + abs(fusion_score - 0.5))
+        confidence_calibration = min(0.90, max(0.68, 0.50 + abs(fusion_score - 0.5) * 1.5))
         decision_level = "LEVEL_4_FORENSIC_FUSION_AI"
-        reason = f"Forensic noise residuals and visual models indicate synthetic generation (fused score: {fusion_score:.2f})."
+        reason = f"Visual ensemble models and forensic texture patterns corroborate synthetic generation (fused score: {fusion_score:.2f})."
 
-    elif fusion_score <= 0.35 and (cam_prov >= 0.40 or sensor_score <= 0.35):
+    elif fusion_score <= 0.42 and (cam_prov >= 0.30 or sensor_score <= 0.40):
         verdict = "LIKELY_AUTHENTIC"
         assessment = "likely_authentic"
         color = "green"
-        confidence_calibration = min(0.85, 0.5 + abs(fusion_score - 0.5))
+        confidence_calibration = min(0.90, max(0.68, 0.50 + abs(fusion_score - 0.5) * 1.5))
         decision_level = "LEVEL_4_FORENSIC_FUSION_AUTHENTIC"
         reason = f"Physical sensor noise and forensic consistency align with authentic camera capture (fused score: {fusion_score:.2f})."
 
@@ -2531,17 +2551,17 @@ def fuse_signals(
         "creator_tool": prov_data.get("creator_tool"),
         "generator_tool": prov_data.get("generator_tool"),
         "clip_available": clip_avail,
-        "clip_status": "active" if clip_avail else "MODEL_UNAVAILABLE",
-        "clip_raw_real_scores": clip_res.get("real_prompt_scores", {}) if isinstance(clip_res, dict) else {},
-        "clip_raw_ai_scores": clip_res.get("ai_prompt_scores", {}) if isinstance(clip_res, dict) else {},
-        "clip_aggregate_score": round(float(clip_res.get("aggregate_score", 0.0) if isinstance(clip_res, dict) else 0.0), 4),
-        "clip_confidence": round(float(clip_res.get("confidence", 0.0) if isinstance(clip_res, dict) else 0.0), 4),
+        "clip_status": "active" if clip_avail else (clip_res.get("status") if isinstance(clip_res, dict) and clip_res.get("status") else "MODEL_UNAVAILABLE"),
+        "clip_raw_real_scores": clip_res.get("real_prompt_scores", {}) if (clip_avail and isinstance(clip_res, dict)) else {},
+        "clip_raw_ai_scores": clip_res.get("ai_prompt_scores", {}) if (clip_avail and isinstance(clip_res, dict)) else {},
+        "clip_aggregate_score": round(float(clip_res.get("aggregate_score")), 4) if (clip_avail and isinstance(clip_res, dict) and clip_res.get("aggregate_score") is not None) else None,
+        "clip_confidence": round(float(clip_res.get("confidence")), 4) if (clip_avail and isinstance(clip_res, dict) and clip_res.get("confidence") is not None) else None,
         "specialized_detector": {
             "model_name": spec_model_res.model_name if spec_model_res else "umm-maybe/AI-image-detector",
             "available": spec_model_res.available if spec_model_res else False,
             "score": round(float(spec_ai), 4),
             "confidence": round(float(spec_conf), 4),
-            "device": classifier.device,
+            "device": device,
             "inference_time_ms": round(float(spec_model_res.inference_time * 1000) if spec_model_res else 0.0, 2),
         },
         "every_forensic_signal_score": {
@@ -2557,7 +2577,7 @@ def fuse_signals(
         "final_fusion_score": round(float(fusion_score), 4),
         "final_verdict": verdict,
         "final_confidence": round(float(confidence_calibration), 4),
-        "device": classifier.device,
+        "device": device,
         "decision_hierarchy_level_triggered": decision_level,
         "verdict_reason": reason,
         "google_provenance": google_info,

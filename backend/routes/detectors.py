@@ -1,12 +1,14 @@
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
 import logging
 import os
 import socket
 import tempfile
 import time
 import ssl
-from urllib.parse import urlparse
+import re
+from difflib import SequenceMatcher
+from urllib.parse import urlparse, parse_qs, unquote
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import APIRouter, File, Form, UploadFile
@@ -77,7 +79,7 @@ class LinkScanRequest(BaseModel):
 
 
 class AppCheckRequest(BaseModel):
-    appName: str = Field(min_length=2, max_length=120)
+    appName: str = Field(min_length=2, max_length=500)
     packageName: Optional[str] = None
 
 
@@ -725,12 +727,110 @@ def scan_link(payload: LinkScanRequest) -> Dict[str, Any]:
 
 
 
-def _find_app_record(app_name: str) -> Optional[Dict[str, Any]]:
-    needle = app_name.strip().lower()
-    for app in GOV_APPS_DB.get("apps", []):
-        if needle in app["name"].lower() or app["name"].lower() in needle:
-            return app
+PACKAGE_REGEX = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$")
+
+def extract_play_store_package(input_str: str) -> Optional[str]:
+    """
+    Validates a Google Play Store URL or explicit package ID string.
+    Extracts the package ID from the 'id' parameter or direct package format.
+    Rejects non-Play-Store hosts, malformed URLs, and invalid IDs.
+    """
+    if not input_str or not isinstance(input_str, str):
+        return None
+    s = input_str.strip()
+
+    # Check if URL
+    if "play.google.com" in s or s.startswith("http://") or s.startswith("https://") or s.startswith("market://"):
+        try:
+            parsed = urlparse(s)
+            host = (parsed.netloc or "").lower()
+            if "play.google.com" in host or parsed.scheme == "market":
+                from urllib.parse import parse_qs, unquote
+                qs = parse_qs(parsed.query)
+                if "id" in qs and qs["id"]:
+                    pkg = unquote(qs["id"][0]).strip()
+                    if PACKAGE_REGEX.match(pkg):
+                        return pkg
+            return None
+        except Exception:
+            return None
+
+    # Check direct package name format (e.g., in.gov.uidai.mAadhaarPlus)
+    if PACKAGE_REGEX.match(s) and ("." in s) and not any(c in s for c in " /:?#"):
+        return s
+
     return None
+
+
+def _normalize_name(name: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (name or "").lower())
+
+
+def _find_app_record(
+    app_name_or_url: str,
+    package_name: Optional[str] = None
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """
+    Deterministic matching in order:
+    1. Validate and resolve explicit package ID.
+    2. Resolve package ID extracted from valid Google Play URL.
+    3. Attempt exact normalized application-name match.
+    4. Attempt explicitly configured aliases.
+    5. Conservative fuzzy matching with strict threshold (>= 0.85).
+    Returns (matched_record, resolved_package_id).
+    """
+    apps = GOV_APPS_DB.get("apps", [])
+    extracted_pkg = extract_play_store_package(app_name_or_url)
+    explicit_pkg = (package_name or "").strip() or None
+    target_pkg = explicit_pkg or extracted_pkg
+
+    # 1 & 2: Package ID match
+    if target_pkg:
+        target_pkg_lower = target_pkg.lower()
+        for app in apps:
+            if app.get("officialPackage", "").lower() == target_pkg_lower:
+                return app, target_pkg
+
+    # If the user input was a Play Store URL or pure package ID and didn't match catalog,
+    # do NOT fuzzy-match the URL string against app names.
+    if extracted_pkg:
+        return None, extracted_pkg
+
+    norm_needle = _normalize_name(app_name_or_url)
+    if not norm_needle:
+        return None, target_pkg
+
+    # 3: Exact normalized application-name match
+    for app in apps:
+        if _normalize_name(app.get("name", "")) == norm_needle:
+            return app, app.get("officialPackage")
+
+    # 4: Explicitly configured aliases
+    for app in apps:
+        for alias in app.get("aliases", []):
+            if _normalize_name(alias) == norm_needle:
+                return app, app.get("officialPackage")
+
+    # 5: Conservative fuzzy matching
+    if len(norm_needle) >= 4:
+        from difflib import SequenceMatcher
+        candidates = []
+        for app in apps:
+            ratio = SequenceMatcher(None, norm_needle, _normalize_name(app.get("name", ""))).ratio()
+            for alias in app.get("aliases", []):
+                alias_ratio = SequenceMatcher(None, norm_needle, _normalize_name(alias)).ratio()
+                if alias_ratio > ratio:
+                    ratio = alias_ratio
+            if ratio >= 0.85:
+                candidates.append((ratio, app))
+
+        if candidates:
+            candidates.sort(key=lambda x: x[0], reverse=True)
+            if len(candidates) == 1 or (candidates[0][0] - candidates[1][0] >= 0.08):
+                best_app = candidates[0][1]
+                return best_app, best_app.get("officialPackage")
+
+    return None, target_pkg
 
 
 def _dangerous_combo(perms: List[str]) -> bool:
@@ -739,32 +839,75 @@ def _dangerous_combo(perms: List[str]) -> bool:
     return needed.issubset(current)
 
 
-def _check_app_play_store(app_name: str, package_name: Optional[str]) -> Optional[Dict[str, Any]]:
+def _check_app_play_store(app_name: str, package_name: Optional[str]) -> Tuple[Optional[Dict[str, Any]], str]:
+    """
+    Live Play Store check.
+    Returns (details_dict_or_None, lookup_status).
+    lookup_status is one of: 'confirmed', 'not_found', 'unavailable'.
+    """
     if search is None or play_app is None:
-        return None
+        return None, "unavailable"
+
+    extracted_pkg = extract_play_store_package(app_name)
+    pkg_to_fetch = (package_name or "").strip() or extracted_pkg
+
     try:
-        # Search by package name if we have it, else by app_name
-        pkg_to_fetch = package_name.strip() if package_name else None
-        
-        if not pkg_to_fetch:
-            results = search(app_name, lang="en", country="in", n_hits=1)
+        if pkg_to_fetch:
+            try:
+                future = IO_POOL.submit(play_app, pkg_to_fetch, lang="en", country="in")
+                details = future.result(timeout=3)
+                return details, "confirmed"
+            except TimeoutError:
+                logger.warning(f"Play Store package lookup timed out for {pkg_to_fetch}")
+                return None, "unavailable"
+            except Exception as e:
+                err_str = str(e).lower()
+                if "not found" in err_str or "404" in err_str:
+                    return None, "not_found"
+                logger.warning(f"Play Store package lookup failed for {pkg_to_fetch}: {e}")
+                return None, "unavailable"
+
+        clean_query = app_name.strip()
+        def _search_and_fetch():
+            results = search(clean_query, lang="en", country="in", n_hits=1)
             if not results:
                 return None
-            pkg_to_fetch = results[0]["appId"]
-            
-        details = play_app(pkg_to_fetch, lang="en", country="in")
-        return details
+            found_pkg = results[0]["appId"]
+            return play_app(found_pkg, lang="en", country="in")
+
+        try:
+            future = IO_POOL.submit(_search_and_fetch)
+            details = future.result(timeout=3)
+            if details is None:
+                return None, "not_found"
+            return details, "confirmed"
+        except TimeoutError:
+            logger.warning(f"Play Store search timed out for {clean_query}")
+            return None, "unavailable"
     except Exception as exc:
+        err_str = str(exc).lower()
+        if "not found" in err_str or "404" in err_str:
+            return None, "not_found"
         logger.warning(f"Play Store lookup failed for {app_name}: {exc}")
-        return None
+        return None, "unavailable"
+
 
 @router.post("/check-app")
 def check_app(payload: AppCheckRequest) -> Dict[str, Any]:
-    # 1. Fallback / Official check first
-    official_app = _find_app_record(payload.appName)
-    
+    raw_query = payload.appName.strip()
+    input_package = (payload.packageName or "").strip() or None
+    extracted_url_pkg = extract_play_store_package(raw_query)
+
+    # Conflict check: If user supplied both a Play Store URL and an explicit packageName, check consistency
+    pkg_conflict = False
+    if extracted_url_pkg and input_package and extracted_url_pkg.lower() != input_package.lower():
+        pkg_conflict = True
+
+    # 1. Deterministic catalog lookup
+    official_app, resolved_pkg = _find_app_record(raw_query, input_package)
+
     # 2. Live Play Store check
-    live_details = _check_app_play_store(payload.appName, payload.packageName)
+    live_details, lookup_status = _check_app_play_store(raw_query, resolved_pkg or input_package)
 
     BRAND_DEVELOPERS: Dict[str, str] = {
         "whatsapp": "WhatsApp LLC",
@@ -779,67 +922,42 @@ def check_app(payload: AppCheckRequest) -> Dict[str, Any]:
         "gpay": "Google LLC",
     }
 
-    score: float = 0.0
+    score: Optional[float] = None
     installs: Optional[str] = None
-
-    if not official_app and not live_details:
-        return {
-            "verdict": "suspicious",
-            "appName": payload.appName,
-            "officialPackage": "Unknown",
-            "permissions": [],
-            "risks": ["App not found in Play Store or trusted government database."],
-            "officialAlternatives": GOV_APPS_DB.get("apps", [])[:3],
-            "recommendation": "Install only from official publishers. Avoid sideloading APKs.",
-            "englishSummary": "No official match found. The app may be unverified or dangerous.",
-            "hindiSummary": "कोई आधिकारिक मिलान नहीं मिला। ऐप असत्यापित या खतरनाक हो सकता है।",
-        }
-
-    mismatch = False
     verdict: Literal["official", "fake", "suspicious"] = "official"
-    risks = []
-    permissions = []
+    risks: List[str] = []
+    permissions: List[Dict[str, Any]] = []
 
-    input_package = (payload.packageName or "").strip()
-
+    # Resolve application details
     if live_details:
-        # Use live Play Store data
-        app_name = live_details.get("title", payload.appName)
-        official_package = live_details.get("appId", "")
+        app_name = live_details.get("title", official_app["name"] if official_app else raw_query)
+        official_package = live_details.get("appId", resolved_pkg or input_package or "Unknown")
         developer = live_details.get("developer", "Unknown")
         score = float(live_details.get("score") or 0.0)
         installs = live_details.get("installs")
-
-        if official_app and input_package and input_package != official_app["officialPackage"]:
-            mismatch = True
-
-        # Trust heuristics
-        installs_str = installs or ""
-        high_installs = any(x in installs_str for x in ["10,000,000+", "100,000,000+", "1,000,000,000+"])
-        is_trusted = (score > 3.5) or high_installs
-
-        if not is_trusted and not official_app:
-            verdict = "suspicious"
-            risks.append(f"Low trust indicators: {installs_str or 'unknown'} installs, {score:.1f}/5 rating.")
-
-        # Expanded impersonation detection for popular brands
-        app_name_lower = app_name.lower()
-        for brand, expected_dev in BRAND_DEVELOPERS.items():
-            if brand in app_name_lower and expected_dev.lower() not in developer.lower():
-                verdict = "fake"
-                risks.append(
-                    f"Impersonation risk: '{app_name}' appears to impersonate {brand.title()} "
-                    f"but developer '{developer}' does not match the official developer '{expected_dev}'."
-                )
-                break
-
-    else:
-        # Fallback to local gov DB
+        play_store_link = live_details.get("url") or f"https://play.google.com/store/apps/details?id={official_package}"
+    elif official_app:
         app_name = official_app["name"]
         official_package = official_app["officialPackage"]
-        developer = "Official Government Source"
-        if input_package and input_package != official_package:
-            mismatch = True
+        developer = official_app.get("developer", "Official Government Source")
+        play_store_link = official_app.get("playStoreLink") or f"https://play.google.com/store/apps/details?id={official_package}"
+    else:
+        app_name = raw_query if not extracted_url_pkg else extracted_url_pkg
+        official_package = resolved_pkg or input_package or "Unknown"
+        developer = None
+        play_store_link = f"https://play.google.com/store/apps/details?id={official_package}" if (official_package and official_package != "Unknown") else None
+
+    # Handle authenticity verdict
+    claimed_gov = False
+    if pkg_conflict:
+        verdict = "fake"
+        risks.append(f"Package identity conflict: Google Play URL points to '{extracted_url_pkg}', but provided packageName is '{input_package}'.")
+    elif official_app:
+        if input_package and input_package.lower() != official_app["officialPackage"].lower():
+            verdict = "fake"
+            risks.append(f"Package name mismatch. Expected official package '{official_app['officialPackage']}' but received '{input_package}'.")
+        else:
+            verdict = "official"
 
         for perm in official_app.get("permissions", []):
             risk = "low"
@@ -849,12 +967,48 @@ def check_app(payload: AppCheckRequest) -> Dict[str, Any]:
                 "permission": perm,
                 "isRequired": perm in official_app.get("requiredPermissions", []),
                 "riskLevel": risk,
-                "explanation": "Review whether this permission is necessary."
+                "explanation": "Official government service permission."
             })
+    elif live_details:
+        app_name_lower = app_name.lower()
+        impersonation_found = False
 
-    if mismatch:
-        verdict = "fake"
-        risks.append(f"Package name mismatch. Expected {official_package} but got {input_package}.")
+        for brand, expected_dev in BRAND_DEVELOPERS.items():
+            if brand in app_name_lower:
+                impersonation_found = True
+                if expected_dev.lower() in (developer or "").lower():
+                    verdict = "official"
+                else:
+                    verdict = "fake"
+                    risks.append(
+                        f"Impersonation risk: '{app_name}' appears to impersonate {brand.title()} "
+                        f"but developer '{developer}' does not match official developer '{expected_dev}'."
+                    )
+                break
+
+        if not impersonation_found:
+            gov_keywords = ["aadhaar", "uidai", "digilocker", "umang", "cowin", "aarogya setu", "pm kisan", "epfo", "passport seva"]
+            claimed_gov = any(k in app_name_lower for k in gov_keywords)
+            if claimed_gov:
+                verdict = "suspicious"
+                risks.append("Unverified government claims: App name contains government service terms but does not match any verified record in the official government catalog.")
+            else:
+                installs_str = installs or ""
+                high_installs = any(x in installs_str for x in ["10,000,000+", "100,000,000+", "1,000,000,000+"])
+                is_trusted = (score and score > 3.5) or high_installs
+                if is_trusted:
+                    verdict = "official"
+                else:
+                    verdict = "suspicious"
+                    risks.append(f"Low trust indicators: {installs_str or 'unknown'} installs, {score or 0.0:.1f}/5 rating.")
+    else:
+        verdict = "suspicious"
+        if lookup_status == "not_found":
+            risks.append("App not found on Google Play Store or trusted government database. Exercise extreme caution.")
+        elif lookup_status == "unavailable":
+            risks.append("Live Play Store lookup could not be reached (offline or service unavailable) and app is not in the trusted government database.")
+        else:
+            risks.append("App could not be verified in Google Play Store or trusted database.")
 
     if _dangerous_combo([p.get("permission", "") for p in permissions]):
         verdict = "suspicious" if verdict == "official" else verdict
@@ -870,22 +1024,32 @@ def check_app(payload: AppCheckRequest) -> Dict[str, Any]:
         eng_summary = "App shows suspicious indicators. Proceed with caution."
         hi_summary = "ऐप संदिग्ध संकेत दिखाता है। सावधानी से आगे बढ़ें।"
 
-    response = {
-        "verdict": verdict,
-        "appName": app_name,
-        "developer": developer,
-        "officialPackage": official_package,
-        "rating": score if live_details else None,
-        "installs": installs if live_details else None,
-        "permissions": permissions,
-        "risks": risks or ["No major red flags detected."],
-        "officialAlternatives": [
+    # Only provide official alternatives if the query was related to a government service
+    if official_app and verdict != "official":
+        official_alternatives = [
             {
                 "name": official_app["name"],
                 "packageName": official_app["officialPackage"],
                 "playStoreLink": official_app["playStoreLink"],
             }
-        ] if official_app else [],
+        ]
+    elif claimed_gov:
+        official_alternatives = GOV_APPS_DB.get("apps", [])[:3]
+    else:
+        official_alternatives = []
+
+    response = {
+        "verdict": verdict,
+        "appName": app_name,
+        "developer": developer,
+        "officialPackage": official_package,
+        "playStoreLink": play_store_link,
+        "lookupStatus": lookup_status,
+        "rating": score,
+        "installs": installs,
+        "permissions": permissions,
+        "risks": risks or ["No major red flags detected."],
+        "officialAlternatives": official_alternatives,
         "recommendation": eng_summary,
         "englishSummary": eng_summary,
         "hindiSummary": hi_summary,
