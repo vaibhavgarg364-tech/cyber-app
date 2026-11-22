@@ -108,6 +108,7 @@ flowchart TD
 - **MediaPipe BlazeFace Isolation:** Automatically isolates and normalizes face regions using `blaze_face_short_range.tflite` to prevent background confusion.
 - **Digital Forensic Algorithms:** Executes Error Level Analysis (ELA) for compression anomalies, 2D Fast Fourier Transform (FFT) for periodic generative noise, and Discrete Wavelet Transform (DWT) co-occurrence accumulation via vectorized NumPy.
 - **Hardware Acceleration:** Native CUDA FP32 precision support on NVIDIA GPUs with serialized concurrency controls (`asyncio.Semaphore(1)`).
+- **Debug Image Storage Policy:** Deepfake debug image storage is disabled by default (VEYRON_DEBUG_FACES=false), so normal analysis does not save uploaded or derived images. For local debugging only, explicitly set VEYRON_DEBUG_FACES=true in ackend/.env. This writes intermediate images and heatmaps under debug_outputs/ for inspection; successful debug artifacts are retained until manually removed. If analysis fails, artifacts created by that operation are removed. Uploaded and downloaded processing files are temporary and cleaned up after analysis. Do not enable this option in production.
 - *Operational Scope:* Still image authentication only. Video files trigger an explicit advisory noting that temporal optical-flow tracking is required; audio analysis is not supported.
 
 ### 2. Link Scanner & Outbound SSRF Protection
@@ -193,10 +194,11 @@ Veyron Pro is a planned premium personal cybersecurity experience built around p
 - **Optional**: NVIDIA GPU with CUDA drivers (for local deepfake acceleration)
 
 ### Step 1: Clone the Repository
-```bash
+`ash
 git clone https://github.com/vaibhavgarg364-tech/Veyron-v1.git
 cd Veyron-v1
-```
+`
+
 
 ### Step 2: Configure Environment Variables
 Create a `.env` file in the `backend/` directory by copying the template:

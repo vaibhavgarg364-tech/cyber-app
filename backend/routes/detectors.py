@@ -1146,8 +1146,8 @@ async def detect_deepfake(
             suffix = Path(source_name).suffix or ".jpg"
             blob = await file.read()
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
-                temp_file.write(blob)
                 temp_path = temp_file.name
+                temp_file.write(blob)
 
         try:
             async with _get_deepfake_semaphore():

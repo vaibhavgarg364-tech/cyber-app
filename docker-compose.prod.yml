@@ -10,6 +10,8 @@ services:
     env_file:
       - ./backend/.env
       - ./.env.prod
+    environment:
+      VEYRON_DEBUG_FACES: "false"
     expose:
       - "8000"
     restart: unless-stopped
