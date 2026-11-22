@@ -131,6 +131,8 @@ def download_media_from_url(url: str, max_size_mb: int = 55, timeout: int = 15) 
     Returns (temp_file_path, error_message).
     Enforces size limits and validates mime types basically.
     """
+    temp_path = None
+    download_succeeded = False
     try:
         resp = requests.get(url, stream=True, timeout=timeout, headers={"User-Agent": "veyron-backend"})
         resp.raise_for_status()
@@ -154,22 +156,33 @@ def download_media_from_url(url: str, max_size_mb: int = 55, timeout: int = 15) 
         
         temp_fd, temp_path = tempfile.mkstemp(suffix=ext)
         downloaded_size = 0
+        size_limit_exceeded = False
         
         with os.fdopen(temp_fd, "wb") as f:
             for chunk in resp.iter_content(chunk_size=8192):
                 if chunk:
                     downloaded_size += len(chunk)
                     if downloaded_size > max_size_mb * 1024 * 1024:
-                        os.remove(temp_path)
-                        return None, f"File exceeds maximum allowed size ({max_size_mb}MB)"
+                        size_limit_exceeded = True
+                        break
                     f.write(chunk)
-                    
+
+        if size_limit_exceeded:
+            return None, f"File exceeds maximum allowed size ({max_size_mb}MB)"
+
+        download_succeeded = True
         return temp_path, None
     except requests.exceptions.Timeout:
         return None, "Download timed out."
     except Exception as exc:
         logging.error(f"Failed to download media from URL {url}: {exc}")
         return None, "Failed to download media from the provided URL."
+    finally:
+        if not download_succeeded and temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                logging.exception("Failed to remove incomplete media download %s", temp_path)
 
 
 def sanitize_for_json(obj: Any, key_path: str = "root") -> Any:
