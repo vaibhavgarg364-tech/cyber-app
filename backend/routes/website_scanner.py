@@ -16,7 +16,7 @@ import requests
 import numpy as np
 from google import genai
 from config import settings
-from routes.utils import url_scam_signals, sha_key
+from routes.utils import url_scam_signals, sha_key, is_safe_public_url, is_restricted_ip
 
 PLAYWRIGHT_AVAILABLE = False
 try:
@@ -213,12 +213,14 @@ def _better_entropy(text: str) -> float:
     return -sum((c / n) * math.log2(c / n) for c in counts.values())
 
 
-def run_heuristic_analysis(canonical_url: str, canonical_hostname: str, original_url: str) -> Dict[str, Any]:
+def run_heuristic_analysis(canonical_url: str, canonical_hostname: str, original_url: Optional[str] = None) -> Dict[str, Any]:
     """
-    Evaluate canonical_url against 12 heuristic checks.
+    Evaluate canonical_url against 16 heuristic checks.
     Returns risk_score (0-100), overall_status, technical_checks,
     score_factors, threat_indicators, is_trusted.
     """
+    if not original_url:
+        original_url = canonical_url
     checks: List[Dict[str, Any]] = []
     factors: List[Dict[str, Any]] = []
     indicators: List[str] = []
@@ -392,10 +394,63 @@ def run_heuristic_analysis(canonical_url: str, canonical_hostname: str, original
         "detail": "Standard port" if not has_suspicious_port else f"Non-standard port: {port}",
     })
 
+    # 13. Embedded secondary URL scheme in path or query
+    has_embedded_scheme = bool(re.search(r"https?://", path, re.IGNORECASE)) or bool(re.search(r"(?:https?://|https?:/|//[a-zA-Z0-9.\-]+)", path + ("?" + query if query else "")))
+    if has_embedded_scheme and not is_trusted:
+        score += 25
+        factors.append({"factor": "Embedded secondary URL scheme", "impact": 25})
+        indicators.append("URL path contains an embedded secondary URL scheme (classic redirect / phishing obfuscation)")
+    checks.append({
+        "check": "Embedded URL Scheme",
+        "passed": not has_embedded_scheme,
+        "detail": "No secondary URL scheme embedded in path" if not has_embedded_scheme else "Secondary URL scheme embedded in path",
+    })
+
+    # 14. Direct executable / payload download target
+    executable_exts = {".exe", ".scr", ".bat", ".cmd", ".msi", ".apk", ".dmg", ".vbs", ".iso", ".ps1"}
+    has_executable_target = any(path.lower().endswith(ext) or (ext + "http") in path.lower() or (ext + "/") in path.lower() for ext in executable_exts)
+    if has_executable_target and not is_trusted:
+        score += 25
+        factors.append({"factor": "Executable / payload download target", "impact": 25})
+        indicators.append("URL directly targets an executable or installer file (.exe/.msi/.apk), indicating potential malware delivery")
+    checks.append({
+        "check": "Executable Target",
+        "passed": not has_executable_target,
+        "detail": "URL does not target an executable installer" if not has_executable_target else "Path targets direct executable file",
+    })
+
+    # 15. Brand impersonation / lookalike in hostname
+    impersonated_brand = detect_brand_impersonation(hostname)
+    has_brand_impersonation = bool(impersonated_brand) and not is_trusted
+    if has_brand_impersonation:
+        score += 35
+        factors.append({"factor": f"Brand impersonation / lookalike ({impersonated_brand})", "impact": 35})
+        indicators.append(f"Hostname contains unauthorized brand identifier or lookalike pattern for '{impersonated_brand}'")
+    checks.append({
+        "check": "Brand Authenticity",
+        "passed": not has_brand_impersonation,
+        "detail": "No brand lookalike pattern detected in hostname" if not has_brand_impersonation else f"Unauthorized use of brand '{impersonated_brand}' in hostname {hostname}",
+    })
+
+    # 16. RFC-reserved or special-use domain
+    is_reserved_tld = hostname.endswith((".example", ".test", ".invalid", ".localhost", ".onion", ".local")) or hostname in {"example", "test", "invalid", "localhost"}
+    if is_reserved_tld:
+        indicators.append(f"Hostname uses an RFC-reserved or special-use domain ({hostname}) which does not exist on the public internet")
+    checks.append({
+        "check": "Public DNS Scope",
+        "passed": not is_reserved_tld,
+        "detail": "Standard public top-level domain" if not is_reserved_tld else f"RFC-reserved special-use domain ({hostname})",
+    })
+
     score = min(100, max(0, score))
 
-    if score <= 10:
+    # CRITICAL CORRECTION: "Trusted" is STRICTLY reserved for verified high-reputation domains (in TRUSTED_DOMAINS)
+    # An unknown or arbitrary domain with 0 heuristic points is "Low Risk", NEVER "Trusted".
+    if is_trusted and score <= 15:
         overall_status = "Trusted"
+    elif has_brand_impersonation:
+        overall_status = "Suspicious" if score <= 70 else "Dangerous"
+        score = max(score, 50)
     elif score <= 25:
         overall_status = "Low Risk"
     elif score <= 45:
@@ -412,6 +467,7 @@ def run_heuristic_analysis(canonical_url: str, canonical_hostname: str, original
         "score_factors": factors,
         "threat_indicators": indicators,
         "is_trusted": is_trusted,
+        "brand_impersonation": {"brand": impersonated_brand} if has_brand_impersonation else None,
     }
 
 
@@ -629,10 +685,10 @@ class ResearchScanner:
             "threat_indicators": [],
             "malicious_count": 0,
             "suspicious_count": 0,
-            "safe_count": 92,
-            "harmless_count": 92,
+            "safe_count": 0,
+            "harmless_count": 0,
             "undetected_count": 0,
-            "total_engines": 92,
+            "total_engines": 0,
             "technical_checks": heuristic["technical_checks"],
             "score_factors": [{"factor": "Verified high-reputation authority domain", "impact": -30}],
             "recommendations": [
@@ -661,9 +717,9 @@ class ResearchScanner:
                 "brand_impersonation": None
             },
             "api_status": {
-                "heuristics": {"configured": True, "used": True, "label": "Local Heuristics"},
-                "virustotal": {"configured": True, "used": True, "label": "VirusTotal"},
-                "google_safe_browsing": {"configured": True, "used": True, "label": "Google Safe Browsing"}
+                "heuristics": {"configured": True, "used": True, "status": "SUCCESS_CLEAN", "label": "Local Heuristics"},
+                "virustotal": {"configured": bool(settings.virustotal_api_key), "used": False, "status": "NOT_QUERIED", "label": "VirusTotal"},
+                "google_safe_browsing": {"configured": bool(settings.safe_browsing_api_key), "used": False, "status": "NOT_QUERIED", "label": "Google Safe Browsing"}
             },
             "observability": {
                 "durations": {"total_scan": 0.005},
@@ -695,10 +751,10 @@ class ResearchScanner:
             "threat_indicators": heuristic.get("threat_indicators", []),
             "malicious_count": 0,
             "suspicious_count": 0,
-            "safe_count": 85,
-            "harmless_count": 85,
+            "safe_count": 0,
+            "harmless_count": 0,
             "undetected_count": 0,
-            "total_engines": 85,
+            "total_engines": 0,
             "technical_checks": heuristic.get("technical_checks", []),
             "score_factors": heuristic.get("score_factors", []),
             "recommendations": ["Verified domain structure. Proceed with normal caution."],
@@ -720,10 +776,66 @@ class ResearchScanner:
             "crawler_summary": {},
             "phishing_report": {},
             "api_status": {
-                "heuristics": {"configured": True, "used": True, "label": "Local Heuristics"},
+                "heuristics": {"configured": True, "used": True, "status": "SUCCESS_CLEAN" if heuristic.get("is_trusted") else "DEGRADED", "label": "Local Heuristics"},
+                "virustotal": {"configured": bool(settings.virustotal_api_key), "used": False, "status": "NOT_QUERIED", "label": "VirusTotal"},
+                "google_safe_browsing": {"configured": bool(settings.safe_browsing_api_key), "used": False, "status": "NOT_QUERIED", "label": "Google Safe Browsing"}
+            }
+        }
+
+    def _generate_blocked_ssrf_report(self, reason: str) -> Dict[str, Any]:
+        canonical_url, canonical_hostname = normalize_url(self.target_url)
+        self.runtime_state["status"] = "BLOCKED_SSRF"
+        return {
+            "target_url": self.target_url,
+            "normalized_url": canonical_url,
+            "original_input": self.target_url,
+            "hostname": canonical_hostname,
+            "verdict": "BLOCKED",
+            "overall_status": "Blocked",
+            "risk_score": 0,
+            "confidence": 1.0,
+            "confidence_percent": 100,
+            "confidence_label": "Restricted Target - Private / Internal Network Blocked",
+            "invalid_domain": True,
+            "is_blocked_target": True,
+            "is_private_target": True,
+            "connection_status": "Blocked",
+            "runtime_state": self.runtime_state,
+            "threats": [],
+            "threat_indicators": [f"Access to restricted endpoint is blocked for security (SSRF prevention): {reason}"],
+            "malicious_count": 0,
+            "suspicious_count": 0,
+            "safe_count": 0,
+            "harmless_count": 0,
+            "undetected_count": 0,
+            "total_engines": 0,
+            "recommendations": [
+                "Target URL resolves to an internal, loopback, or private network address.",
+                "Veyron only scans public internet domains. Private network addresses cannot be assessed for phishing.",
+            ],
+            "technical_checks": [
+                {
+                    "name": "SSRF Target Defense",
+                    "status": "Blocked",
+                    "details": reason,
+                    "passed": False,
+                }
+            ],
+            "domainInfo": {
+                "registeredDate": "N/A",
+                "age": "Restricted",
+                "reputation": "blocked"
+            },
+            "findings": ["Private/Internal network address detected", "SSRF protection engaged"],
+            "details": [reason],
+            "findings_details": [],
+            "api_status": {
+                "heuristics": {"configured": True, "used": True, "label": "SSRF Guard"},
                 "virustotal": {"configured": False, "used": False, "label": "VirusTotal"},
                 "google_safe_browsing": {"configured": False, "used": False, "label": "Google Safe Browsing"}
-            }
+            },
+            "englishSummary": f"Scan Refused: {canonical_hostname} is an internal/private endpoint.",
+            "hindiSummary": f"स्कैन अस्वीकृत: {canonical_hostname} एक आंतरिक या निजी नेटवर्क पता है।",
         }
 
     def _export_reports(self, report: Dict[str, Any]):
@@ -791,6 +903,12 @@ class ResearchScanner:
             logger.error(f"[ResearchScanner] Failed to generate exports: {e}")
 
     def execute_scan(self) -> Dict[str, Any]:
+        # SSRF Protection: block private/loopback/cloud metadata endpoints immediately
+        is_safe, ssrf_err = is_safe_public_url(self.target_url)
+        if not is_safe:
+            logger.warning(f"[ResearchScanner] SSRF protection triggered for {self.target_url}: {ssrf_err}")
+            return self._generate_blocked_ssrf_report(ssrf_err or "Access to internal or private IP address forbidden.")
+
         # Fast path for trusted domains (immediate sub-second response)
         if is_trusted_host(self.domain):
             logger.info(f"[ResearchScanner] Fast-path hit for trusted domain: {self.domain}")
@@ -923,6 +1041,10 @@ class ResearchScanner:
             return False
 
     def _safe_request(self, method: str, url: str, **kwargs) -> Optional[requests.Response]:
+        is_safe, _ = is_safe_public_url(url)
+        if not is_safe:
+            logger.warning(f"[ResearchScanner] SSRF blocked probe request to {url}")
+            return None
         if self.host_unreachable and self._is_target_host(url):
             return None
         if self.request_count >= self.max_requests:
@@ -939,10 +1061,41 @@ class ResearchScanner:
         headers["X-Scanner-Safe-Mode"] = "enabled"
         kwargs["headers"] = headers
         kwargs["timeout"] = kwargs.get("timeout", 2.5)
-        kwargs["allow_redirects"] = kwargs.get("allow_redirects", True)
-        
+
+        # Hop-by-hop redirect following with individual SSRF validation on each hop
+        current_url = url
+        max_hops = 5
         try:
-            resp = requests.request(method, url, **kwargs)
+            for _ in range(max_hops):
+                is_safe, ssrf_err = is_safe_public_url(current_url)
+                if not is_safe:
+                    logger.warning(f"[ResearchScanner] SSRF blocked redirect to restricted target: {current_url}")
+                    return None
+                req_kwargs = dict(kwargs)
+                req_kwargs["allow_redirects"] = False
+                resp = requests.request(method, current_url, **req_kwargs)
+
+                # Post-connection socket verification to defeat DNS rebinding (TOCTOU)
+                try:
+                    raw_conn = getattr(getattr(resp, "raw", None), "_connection", None)
+                    sock = getattr(raw_conn, "sock", None)
+                    if sock and hasattr(sock, "getpeername"):
+                        peer_name = sock.getpeername()
+                        if peer_name and isinstance(peer_name, tuple):
+                            peer_ip = peer_name[0]
+                            restricted, reason = is_restricted_ip(peer_ip)
+                            if restricted:
+                                logger.warning(f"[ResearchScanner] DNS Rebinding blocked! Connected to restricted peer: {peer_ip} ({reason})")
+                                resp.close()
+                                return None
+                except Exception as sock_err:
+                    logger.debug(f"[ResearchScanner] Socket peer check passed/skipped: {sock_err}")
+
+                if resp.is_redirect and "Location" in resp.headers:
+                    next_url = urllib.parse.urljoin(current_url, resp.headers["Location"])
+                    current_url = next_url
+                else:
+                    return resp
             return resp
         except requests.exceptions.TooManyRedirects:
             logger.warning(f"[ResearchScanner] Redirect loop / too many redirects halted for {url}")
@@ -1366,34 +1519,56 @@ class ResearchScanner:
                     self.active_findings.append(res)
 
     # ================= Layer 5: Threat Intelligence =================
-    def _vt_lookup(self) -> Dict[str, int]:
+    def _vt_lookup(self) -> Tuple[Dict[str, int], str]:
         """VirusTotal: prefer the existing URL report (instant, full engine
         verdicts); fall back to submit + short poll for never-seen URLs."""
         import base64
         vt_stats = {"malicious": 0, "suspicious": 0, "harmless": 0, "undetected": 0}
         if not settings.virustotal_api_key:
-            return vt_stats
+            return vt_stats, "NOT_CONFIGURED"
         headers = {"x-apikey": settings.virustotal_api_key}
         stats: Dict[str, Any] = {}
+        status = "NOT_QUERIED"
         try:
             url_id = base64.urlsafe_b64encode(self.target_url.encode()).decode().strip("=")
             r = requests.get(f"https://www.virustotal.com/api/v3/urls/{url_id}", headers=headers, timeout=2.5)
             if r.status_code == 200:
                 stats = r.json().get("data", {}).get("attributes", {}).get("last_analysis_stats", {}) or {}
+                mal = int(stats.get("malicious", 0) or 0)
+                sus = int(stats.get("suspicious", 0) or 0)
+                tot = sum(int(stats.get(k, 0) or 0) for k in ["malicious", "suspicious", "harmless", "undetected"])
+                if tot == 0:
+                    status = "NO_INTELLIGENCE"
+                elif mal > 0 or sus > 0:
+                    status = "SUCCESS_MALICIOUS"
+                else:
+                    status = "SUCCESS_CLEAN"
+            elif r.status_code == 404:
+                status = "NO_INTELLIGENCE"
+            elif r.status_code in (401, 403):
+                status = "AUTH_ERROR"
             elif r.status_code == 429:
                 self.runtime_state["vt_quota"] = "EXCEEDED"
+                status = "RATE_LIMITED"
+            else:
+                status = "NETWORK_ERROR"
         except Exception as exc:
             logger.debug(f"[ResearchScanner] VirusTotal lookup failed: {exc}")
+            if "Timeout" in type(exc).__name__:
+                status = "TIMEOUT"
+            else:
+                status = "NETWORK_ERROR"
         for k in vt_stats:
             try:
                 vt_stats[k] = int(stats.get(k, 0) or 0)
             except (TypeError, ValueError):
                 vt_stats[k] = 0
-        return vt_stats
+        return vt_stats, status
 
-    def _gsb_lookup(self) -> List[Dict[str, Any]]:
+    def _gsb_lookup(self) -> Tuple[List[Dict[str, Any]], str]:
         if not settings.safe_browsing_api_key:
-            return []
+            return [], "NOT_CONFIGURED"
+        status = "NOT_QUERIED"
         try:
             endpoint = f"https://safebrowsing.googleapis.com/v4/threatMatches:find?key={settings.safe_browsing_api_key}"
             body = {
@@ -1407,12 +1582,26 @@ class ResearchScanner:
             }
             resp = requests.post(endpoint, json=body, timeout=6)
             if resp.status_code == 200:
-                return resp.json().get("matches", []) or []
-            if resp.status_code == 429:
+                matches = resp.json().get("matches", []) or []
+                status = "SUCCESS_MALICIOUS" if matches else "SUCCESS_CLEAN"
+                return matches, status
+            elif resp.status_code in (400, 401, 403):
+                status = "AUTH_ERROR"
+                return [], status
+            elif resp.status_code == 429:
                 self.runtime_state["gsb_quota"] = "EXCEEDED"
+                status = "RATE_LIMITED"
+                return [], status
+            else:
+                status = "NETWORK_ERROR"
+                return [], status
         except Exception as exc:
             logger.debug(f"[ResearchScanner] Safe Browsing lookup failed: {exc}")
-        return []
+            if "Timeout" in type(exc).__name__:
+                status = "TIMEOUT"
+            else:
+                status = "NETWORK_ERROR"
+            return [], status
 
     def _layer_5_threat_intel(self):
         import concurrent.futures as _cf
@@ -1420,17 +1609,23 @@ class ResearchScanner:
         blacklist_listed = False
 
         # VirusTotal and Google Safe Browsing run concurrently.
-        with _cf.ThreadPoolExecutor(max_workers=2) as ex:
-            vt_future = ex.submit(self._vt_lookup)
-            gsb_future = ex.submit(self._gsb_lookup)
-            try:
-                vt_stats = vt_future.result(timeout=15)
-            except Exception:
-                vt_stats = {"malicious": 0, "suspicious": 0, "harmless": 0, "undetected": 0}
-            try:
-                sb_matches = gsb_future.result(timeout=10)
-            except Exception:
-                sb_matches = []
+        vt_stats = {"malicious": 0, "suspicious": 0, "harmless": 0, "undetected": 0}
+        vt_status = "NOT_CONFIGURED" if not settings.virustotal_api_key else "NOT_QUERIED"
+        sb_matches = []
+        sb_status = "NOT_CONFIGURED" if not settings.safe_browsing_api_key else "NOT_QUERIED"
+
+        if not self.host_unreachable:
+            with _cf.ThreadPoolExecutor(max_workers=2) as ex:
+                vt_future = ex.submit(self._vt_lookup)
+                gsb_future = ex.submit(self._gsb_lookup)
+                try:
+                    vt_stats, vt_status = vt_future.result(timeout=15)
+                except Exception as exc:
+                    vt_status = "TIMEOUT" if "Timeout" in type(exc).__name__ else "NETWORK_ERROR"
+                try:
+                    sb_matches, sb_status = gsb_future.result(timeout=10)
+                except Exception as exc:
+                    sb_status = "TIMEOUT" if "Timeout" in type(exc).__name__ else "NETWORK_ERROR"
 
         # High-risk TLD reputation
         if any(self.domain.endswith(tld) for tld in _RISKY_TLDS):
@@ -1439,7 +1634,9 @@ class ResearchScanner:
             
         self.threat_intel_data = {
             "virustotal_stats": vt_stats,
+            "virustotal_status": vt_status,
             "safe_browsing_matches": sb_matches,
+            "safe_browsing_status": sb_status,
             "domain_reputation": domain_reputation,
             "blacklist_listed": blacklist_listed
         }
@@ -1495,12 +1692,39 @@ class ResearchScanner:
                 has_weak_evidence = True
                 evidence_list.append("typosquat")
 
+        # Heuristic Analysis evaluation in fusion
+        canonical_url, canonical_hostname = normalize_url(self.target_url)
+        heuristic = run_heuristic_analysis(canonical_url, canonical_hostname, self.target_url)
+        h_score = heuristic.get("risk_score", 0)
+        h_indicators = heuristic.get("threat_indicators", [])
+        real_threat_indicators = [
+            ind for ind in h_indicators
+            if "does not use HTTPS encryption" not in ind and "HTTP (no encryption)" not in ind
+        ]
+
+        if h_score >= 60 or heuristic.get("brand_impersonation"):
+            has_strong_evidence = True
+            evidence_list.append("brand impersonation / high heuristic threat")
+        elif h_score >= 25 or len(real_threat_indicators) > 0:
+            has_weak_evidence = True
+            evidence_list.append("heuristic anomaly")
+
         if self.runtime_state["status"] == "SCAN_FAILED":
             verdict = "SCAN_FAILED"
             confidence = 0.0
         elif self.runtime_state["status"] == "SCAN_DEGRADED":
             verdict = "INSUFFICIENT_EVIDENCE"
             confidence = 0.0
+        elif self.host_unreachable:
+            if has_strong_evidence:
+                verdict = "MALICIOUS"
+                confidence = 0.85
+            elif has_weak_evidence:
+                verdict = "SUSPICIOUS"
+                confidence = 0.60
+            else:
+                verdict = "INSUFFICIENT_EVIDENCE"
+                confidence = 0.20
         elif has_strong_evidence:
             verdict = "MALICIOUS"
             confidence = 0.95
@@ -1509,7 +1733,7 @@ class ResearchScanner:
             confidence = 0.60
         else:
             verdict = "SAFE"
-            confidence = 0.90
+            confidence = 0.90 if heuristic.get("is_trusted") else 0.70
 
         return {
             "fusion_score": confidence,
@@ -1624,9 +1848,11 @@ class ResearchScanner:
         vt_configured = bool(settings.virustotal_api_key)
         gsb_configured = bool(settings.safe_browsing_api_key)
         vt_stats = self.threat_intel_data.get("virustotal_stats", {"malicious": 0, "suspicious": 0, "harmless": 0, "undetected": 0})
+        vt_status = self.threat_intel_data.get("virustotal_status", "NOT_CONFIGURED" if not vt_configured else "NOT_QUERIED")
         gsb_matches = self.threat_intel_data.get("safe_browsing_matches", [])
-        vt_responded = vt_configured and (sum(vt_stats.values()) > 0 or vt_stats.get("harmless", 0) >= 0)
-        gsb_responded = gsb_configured
+        gsb_status = self.threat_intel_data.get("safe_browsing_status", "NOT_CONFIGURED" if not gsb_configured else "NOT_QUERIED")
+        vt_used = vt_configured and vt_status in ("SUCCESS_CLEAN", "SUCCESS_MALICIOUS", "NO_INTELLIGENCE")
+        gsb_used = gsb_configured and gsb_status in ("SUCCESS_CLEAN", "SUCCESS_MALICIOUS")
 
         # ── Override overall_status if reputation APIs or fusion flag it ──
         vt_malicious = vt_stats.get("malicious", 0)
@@ -1641,6 +1867,8 @@ class ResearchScanner:
             if overall_status in ("Trusted", "Low Risk", "Moderate Risk"):
                 overall_status = "Suspicious"
             risk_score = max(risk_score, 50)
+        elif fusion_report["verdict"] == "INSUFFICIENT_EVIDENCE":
+            overall_status = "Unknown"
 
         # ── Honest confidence calculation ─────────────────────────────────
         # Base: heuristics always run → 40
@@ -1649,25 +1877,47 @@ class ResearchScanner:
         # VirusTotal used → +25
         # GSB used → +15
         confidence_score = 40
-        dns_ok = "error" not in self.recon_data.get("dns", {"error": "not checked"})
+        dns_ok = ("error" not in self.recon_data.get("dns", {"error": "not checked"})) and (not self.host_unreachable)
         if dns_ok:
             confidence_score += 10
         if self.parsed_url.scheme == "https" and not self.recon_data.get("tls", {}).get("error"):
             confidence_score += 10
-        if vt_configured and vt_responded:
+        if vt_used:
             confidence_score += 25
-        if gsb_configured and gsb_responded:
+        if gsb_used:
             confidence_score += 15
         confidence_score = min(100, confidence_score)
-        confidence_label = (
-            "Confidence based on local analysis only — no reputation APIs used"
-            if confidence_score <= 55
-            else "Confidence reflects heuristics and reputation API results"
-        )
+
+        if self.host_unreachable:
+            if fusion_report["verdict"] in ("MALICIOUS", "Dangerous"):
+                overall_status = "Dangerous"
+                risk_score = max(risk_score, 75)
+                confidence_score = min(40, confidence_score)
+                confidence_label = "Unreachable host - flagged by dangerous heuristic indicators"
+            elif fusion_report["verdict"] in ("SUSPICIOUS", "Suspicious"):
+                overall_status = "Suspicious"
+                risk_score = max(risk_score, 50)
+                confidence_score = min(40, confidence_score)
+                confidence_label = "Unreachable host - flagged by suspicious heuristic indicators"
+            else:
+                overall_status = "Unknown"
+                confidence_score = min(20, confidence_score)
+                confidence_label = "Host could not be resolved or reached; insufficient evidence"
+        else:
+            confidence_label = (
+                "Confidence based on local analysis only — no reputation APIs used"
+                if confidence_score <= 55
+                else "Confidence reflects heuristics and reputation API results"
+            )
 
         # ── Enrich recommendations ────────────────────────────────────────
         curated_recs = list(recommendations)
-        if overall_status == "Trusted":
+        if self.host_unreachable and overall_status == "Unknown":
+            curated_recs = [
+                "Host could not be resolved via DNS or reached over the network.",
+                "Verify domain spelling. Inactive or unregistered domains may be parked or decommissioned."
+            ]
+        elif overall_status == "Trusted":
             curated_recs = ["Safe for normal browsing.", "Always verify login pages independently."]
         elif overall_status == "Low Risk":
             curated_recs = ["Exercise normal caution.", "Verify the sender before opening."] + curated_recs[:2]
@@ -1675,8 +1925,10 @@ class ResearchScanner:
             curated_recs = ["Avoid entering credentials.", "Verify URL carefully before proceeding."] + curated_recs[:2]
         elif overall_status == "Suspicious":
             curated_recs = ["Avoid entering passwords or OTPs.", "Do not proceed unless you trust the source completely."] + curated_recs[:2]
-        else:  # Dangerous
+        elif overall_status == "Dangerous":
             curated_recs = ["Do NOT interact with this link.", "Report to your IT/security team if received via email or SMS."] + curated_recs[:2]
+        else:
+            curated_recs = ["Target address status could not be verified.", "Exercise extreme caution before visiting."]
 
         # ── Map verdict to frontend-compatible string ─────────────────────
         status_to_verdict = {
@@ -1685,31 +1937,40 @@ class ResearchScanner:
             "Moderate Risk": "suspicious",
             "Suspicious": "suspicious",
             "Dangerous": "dangerous",
+            "Blocked": "blocked",
+            "Unknown": "uncertain",
         }
-        frontend_verdict = status_to_verdict.get(overall_status, "unknown")
+        frontend_verdict = status_to_verdict.get(overall_status, "uncertain")
+        conn_status = "Reachable" if dns_ok else f"Unreachable ({self.host_unreachable_reason or 'DNS lookup failed'})"
 
         return {
             # ── Existing fields (preserved for backward compatibility) ──
             "url": self.target_url,
             "verdict": frontend_verdict,
+            "threat_verdict": fusion_report.get("verdict", frontend_verdict.upper()),
+            "scan_status": "DNS_RESOLUTION_FAILED" if (self.host_unreachable and "DNS" in self.host_unreachable_reason) else ("HOST_UNREACHABLE" if self.host_unreachable else "COMPLETED"),
             "runtime_state": self.runtime_state,
             "confidence": round(confidence, 4),
             "evidence_gate": fusion_report.get("evidence_gate", []),
             "threats": list(set([f["type"] for f in deduplicated_findings if f["severity"] in ("high", "critical")])),
             "malicious_count": vt_stats["malicious"],
             "suspicious_count": vt_stats["suspicious"],
-            "safe_count": vt_stats["harmless"],
-            "harmless_count": vt_stats["harmless"],
-            "undetected_count": vt_stats["undetected"],
-            "total_engines": sum(vt_stats.values()),
+            "safe_count": vt_stats["harmless"] if vt_used else 0,
+            "harmless_count": vt_stats["harmless"] if vt_used else 0,
+            "undetected_count": vt_stats["undetected"] if vt_used else 0,
+            "total_engines": sum(vt_stats.values()) if vt_used else 0,
             "invalid_domain": not dns_ok,
-            "connection_status": "Reachable" if dns_ok else self.recon_data["dns"].get("error", "DNS failed"),
+            "connection_status": conn_status,
             "virusTotal": {
                 "configured": vt_configured,
+                "used": vt_used,
+                "status": vt_status,
                 "stats": vt_stats,
             },
             "googleSafeBrowsing": {
                 "configured": gsb_configured,
+                "used": gsb_used,
+                "status": gsb_status,
                 "matches": gsb_matches,
             },
             "redirectChain": [self.target_url],
@@ -1726,7 +1987,7 @@ class ResearchScanner:
                 "registeredDate": "Unknown",
                 "age": "Known/Established" if dns_ok else "Unknown",
                 "reputation": "suspicious" if frontend_verdict == "suspicious" else (
-                    "dangerous" if frontend_verdict == "dangerous" else "safe"
+                    "dangerous" if frontend_verdict == "dangerous" else ("uncertain" if frontend_verdict == "uncertain" else "safe")
                 ),
             },
             "recommendations": curated_recs,
@@ -1750,17 +2011,20 @@ class ResearchScanner:
             "api_status": {
                 "virustotal": {
                     "configured": vt_configured,
-                    "used": vt_configured and vt_responded,
+                    "used": vt_used,
+                    "status": vt_status,
                     "label": "VirusTotal",
                 },
                 "google_safe_browsing": {
                     "configured": gsb_configured,
-                    "used": gsb_configured and gsb_responded,
+                    "used": gsb_used,
+                    "status": gsb_status,
                     "label": "Google Safe Browsing",
                 },
                 "heuristics": {
                     "configured": True,
                     "used": True,
+                    "status": "SUCCESS_MALICIOUS" if risk_score >= 65 else ("SUCCESS_SUSPICIOUS" if risk_score >= 40 else "SUCCESS_CLEAN"),
                     "label": "Local Heuristics",
                 },
             },

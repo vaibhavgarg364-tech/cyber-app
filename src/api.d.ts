@@ -27,3 +27,7 @@ export function generateComplaintDraft(params?: {
   incidentType?: string;
   userState?: string;
 }): Promise<any>;
+
+export function scanQR(fileOrPayload: File | Blob | string): Promise<any>;
+
+export function scanQRPayload(payloadText: string): Promise<any>;

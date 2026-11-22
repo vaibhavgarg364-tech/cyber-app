@@ -16,6 +16,14 @@ backend/venv/
 backend/.venv/
 backend/__pycache__/
 backend/**/*.pyc
+**/__pycache__/
+*.pyc
+exports/
+backend/exports/
+backend/debug_outputs/
+debug_outputs/patch_heatmap_*.jpg
+debug_outputs/test_debug_*
+
 
 .vscode/*
 !.vscode/extensions.json
@@ -30,3 +38,14 @@ backend/**/*.pyc
 
 # Local Bolt.new / StackBlitz-style IDE metadata (not used by build)
 .bolt/
+
+# Local agent workspace and generated files
+.agents/
+.gsd/
+debug_outputs/
+backend/exports/scan_history.json
+__pycache__/
+*.pyc
+.env.*
+!.env.example
+!.env.*.example

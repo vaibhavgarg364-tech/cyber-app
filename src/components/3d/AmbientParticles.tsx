@@ -20,6 +20,7 @@ function ParticleField({ count = 100 }: ParticlesProps) {
   }, [count]);
 
   useFrame(() => {
+    if (typeof document !== 'undefined' && document.hidden) return;
     if (pointsRef.current) {
       pointsRef.current.rotation.x += 0.0001;
       pointsRef.current.rotation.y += 0.0002;
@@ -53,7 +54,8 @@ export default function AmbientParticles({ count = 150 }: ParticlesProps) {
     <div className="absolute inset-0 w-full h-full pointer-events-none">
       <Canvas
         camera={{ position: [0, 0, 4], fov: 50 }}
-        gl={{ antialias: true, alpha: true }}
+        gl={{ antialias: false, alpha: true, powerPreference: 'low-power' }}
+        dpr={typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 1.5) : 1}
       >
         <ParticleField count={count} />
       </Canvas>

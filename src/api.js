@@ -181,3 +181,22 @@ export async function getCyberCell({ state, lat, lng, isGps } = {}) {
 export async function generateComplaintDraft({ incidentDesc, incidentType, userState } = {}) {
   return request('/generate-complaint', { incidentDesc, incidentType, userState });
 }
+
+export async function scanQR(fileOrPayload) {
+  if (typeof fileOrPayload === 'string') {
+    const form = new FormData();
+    form.append('payload_text', fileOrPayload);
+    return requestForm('/scan-qr', form);
+  }
+  const form = new FormData();
+  if (fileOrPayload instanceof Blob && !(fileOrPayload instanceof File)) {
+    form.append('file', fileOrPayload, 'camera_frame.jpg');
+  } else {
+    form.append('file', fileOrPayload);
+  }
+  return requestForm('/scan-qr', form);
+}
+
+export async function scanQRPayload(payloadText) {
+  return request('/scan-qr-payload', { payload_text: payloadText });
+}

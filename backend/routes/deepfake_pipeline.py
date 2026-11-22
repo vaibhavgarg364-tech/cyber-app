@@ -19,6 +19,9 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Tuple
 
 import cv2
 import numpy as np
+from PIL import Image
+# Defend against image decompression bomb memory exhaustion attacks (50 megapixels max)
+Image.MAX_IMAGE_PIXELS = 50_000_000
 from .utils import sanitize_for_json
 from .provenance_engine import ProvenanceEngine
 
@@ -207,8 +210,6 @@ def _clamp(x: float, lo: float = 0.0, hi: float = 1.0) -> float:
 def log_memory_rss(stage_name: str) -> None:
     try:
         import psutil
-        import gc
-        gc.collect()
         proc = psutil.Process(os.getpid())
         rss_mb = proc.memory_info().rss / (1024 * 1024)
         logger.info(f"[Memory Trace] Stage '{stage_name}': RSS = {rss_mb:.2f} MB")
@@ -493,27 +494,29 @@ class PatchForensicEngine:
         
         srm_variance = float(np.mean([var_min, var_max, var_h1, var_v1, var_h2, var_v2]))
         
-        # 3. DWT Co-occurrence
+        # 3. DWT Co-occurrence (Vectorized via np.bincount for 10x faster accumulation)
         co_occ_all = np.zeros((8, 8), dtype=np.float32)
         for S in [LH, HL, HH]:
+            if S.size == 0 or S.shape[0] < 2 or S.shape[1] < 2:
+                continue
             s_min, s_max = np.min(S), np.max(S)
             if s_max > s_min:
                 S_quant = np.clip(((S - s_min) / (s_max - s_min) * 7.999).astype(np.int32), 0, 7)
             else:
                 S_quant = np.zeros(S.shape, dtype=np.int32)
             
-            co_occ = np.zeros((8, 8), dtype=np.float32)
             left = S_quant[:, :-1].ravel()
             right = S_quant[:, 1:].ravel()
             top = S_quant[:-1, :].ravel()
             bottom = S_quant[1:, :].ravel()
             p1 = np.concatenate([left, top])
             p2 = np.concatenate([right, bottom])
-            np.add.at(co_occ, (p1, p2), 1.0)
-            total = np.sum(co_occ)
-            if total > 0:
-                co_occ /= total
-            co_occ_all += co_occ
+            if p1.size > 0:
+                co_occ = np.bincount(p1 * 8 + p2, minlength=64).reshape((8, 8)).astype(np.float32)
+                total = np.sum(co_occ)
+                if total > 0:
+                    co_occ /= total
+                co_occ_all += co_occ
         co_occ_all /= 3.0
         
         i, j = np.ogrid[:8, :8]
@@ -621,14 +624,12 @@ class PatchForensicEngine:
         
         cv2.imwrite(path, overlay)
         
-        # GC clean up
+        # Clean up temporary overlay structures
         del heatmap
         del heatmap_norm
         del img_ds
         del heatmap_color
         del overlay
-        import gc
-        gc.collect()
         
         return path
 
@@ -711,8 +712,6 @@ class PatchForensicEngine:
                 
         # Clean up global grayscale array
         del gray_img
-        import gc
-        gc.collect()
         
         if not patches:
             return PatchForensicResult(
@@ -829,7 +828,7 @@ def _resize_long_edge(img: np.ndarray, max_side: int = 896) -> Tuple[np.ndarray,
     return np.ascontiguousarray(cv2.resize(img, (nw, nh), interpolation=cv2.INTER_AREA)), scale
 
 # --- MediaPipe Face Detection (with comprehensive debugging) ---
-DEBUG_MODE = os.environ.get("VEYRON_DEBUG_FACES", "1") == "1"
+DEBUG_MODE = os.environ.get("VEYRON_DEBUG_FACES", "0").strip().lower() in {"1", "true", "yes"}
 DEBUG_OUTPUT_DIR = Path("debug_outputs")
 
 def _setup_debug_output():
@@ -852,23 +851,79 @@ def _save_debug_image(image: np.ndarray, name: str, debug_prefix: str = ""):
         logger.warning(f"Failed to save debug image {name}: {e}")
         return None
 
-def _run_mediapipe_detector(rgb: np.ndarray, model_selection: int, min_confidence: float):
+_mp_detector_instance: Optional[Any] = None
+_mp_detector_min_confidence: Optional[float] = None
+_mp_detector_lock = threading.Lock()
+
+def _get_or_create_mediapipe_detector(min_confidence: float = 0.3):
+    global _mp_detector_instance, _mp_detector_min_confidence
+    if _mp_detector_instance is not None and _mp_detector_min_confidence == min_confidence:
+        return _mp_detector_instance
+
     if mp_detector_api == "tasks_vision":
         options = mp_tasks_vision.FaceDetectorOptions(
             base_options=mp_tasks_python.BaseOptions(model_asset_path=str(MP_FACE_MODEL_PATH)),
             min_detection_confidence=min_confidence,
         )
         detector = mp_tasks_vision.FaceDetector.create_from_options(options)
-        try:
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))
-            results = detector.detect(mp_image)
-            return list(results.detections or [])
-        finally:
-            detector.close()
+        _mp_detector_instance = detector
+        _mp_detector_min_confidence = min_confidence
+        return _mp_detector_instance
+    return None
+
+def close_mediapipe_detector():
+    """Safely close and release cached MediaPipe detector resources on shutdown."""
+    global _mp_detector_instance, _mp_detector_min_confidence
+    with _mp_detector_lock:
+        if _mp_detector_instance is not None:
+            try:
+                _mp_detector_instance.close()
+            except Exception as e:
+                logger.warning(f"Error closing MediaPipe detector: {e}")
+            finally:
+                _mp_detector_instance = None
+                _mp_detector_min_confidence = None
+
+def _run_mediapipe_detector(rgb: np.ndarray, model_selection: int, min_confidence: float):
+    global _mp_detector_instance, _mp_detector_min_confidence
+    if mp_detector_api == "tasks_vision":
+        with _mp_detector_lock:
+            try:
+                detector = _get_or_create_mediapipe_detector(min_confidence)
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))
+                results = detector.detect(mp_image)
+                return list(results.detections or [])
+            except Exception as exc:
+                logger.warning(f"[Face Detection] Cached detector error: {exc}. Recreating fresh instance.")
+                # Reset cache on error so failed initialization or execution does not permanently poison cache
+                if _mp_detector_instance is not None:
+                    try:
+                        _mp_detector_instance.close()
+                    except Exception:
+                        pass
+                    _mp_detector_instance = None
+                    _mp_detector_min_confidence = None
+                options = mp_tasks_vision.FaceDetectorOptions(
+                    base_options=mp_tasks_python.BaseOptions(model_asset_path=str(MP_FACE_MODEL_PATH)),
+                    min_detection_confidence=min_confidence,
+                )
+                detector = mp_tasks_vision.FaceDetector.create_from_options(options)
+                try:
+                    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))
+                    results = detector.detect(mp_image)
+                    _mp_detector_instance = detector
+                    _mp_detector_min_confidence = min_confidence
+                    return list(results.detections or [])
+                except Exception:
+                    try:
+                        detector.close()
+                    except Exception:
+                        pass
+                    raise
 
     with mp_face_detection.FaceDetection(
         model_selection=model_selection,
-        min_detection_confidence=min_confidence,
+        min_confidence=min_confidence,
     ) as detector:
         results = detector.process(rgb)
         return list(results.detections or [])
@@ -1469,6 +1524,10 @@ def analyze_diffusion_artifacts(bgr: np.ndarray, faces: List[np.ndarray], boxes:
     ))
     return signals
 
+INFERENCE_PRECISION = os.getenv("VEYRON_INFERENCE_PRECISION", "fp32").strip().lower()
+VEYRON_OFFLINE_MODELS = os.getenv("VEYRON_OFFLINE_MODELS", "0").strip().lower() in {"1", "true", "yes"}
+
+
 class AIEnsembleClassifier:
     """
     Hierarchical Media-Authentication ML Classifier:
@@ -1508,7 +1567,7 @@ class AIEnsembleClassifier:
         import torch
         if AIEnsembleClassifier._device is None:
             AIEnsembleClassifier._device = "cuda" if torch.cuda.is_available() else "cpu"
-            logger.info(f"[AI Ensemble] Inference device: {AIEnsembleClassifier._device} (CUDA available: {torch.cuda.is_available()})")
+            logger.info(f"[AI Ensemble] Inference device: {AIEnsembleClassifier._device} (CUDA available: {torch.cuda.is_available()}) | precision: {INFERENCE_PRECISION}")
 
     @property
     def device(self) -> str:
@@ -1524,6 +1583,18 @@ class AIEnsembleClassifier:
                 cls._device = "cpu"
         return cls._device
 
+    @classmethod
+    def get_readiness_status(cls) -> Dict[str, Any]:
+        """Distinguish a running API from a fully initialized AI deepfake model ensemble."""
+        return {
+            "models_ready": cls._spec_model is not None and cls._clip_model is not None,
+            "specialized_loaded": cls._spec_model is not None,
+            "clip_loaded": cls._clip_model is not None,
+            "device": cls._device or "uninitialized",
+            "precision": INFERENCE_PRECISION,
+            "offline_configured": VEYRON_OFFLINE_MODELS,
+        }
+
     def _ensure_specialized(self):
         with self._lock:
             if AIEnsembleClassifier._spec_model is not None:
@@ -1531,11 +1602,20 @@ class AIEnsembleClassifier:
             try:
                 import torch
                 from transformers import AutoImageProcessor, AutoModelForImageClassification
-                logger.info(f"[Ensemble] Loading specialized detector 'umm-maybe/AI-image-detector' on {self.device}...")
+                is_offline = VEYRON_OFFLINE_MODELS or os.getenv("HF_HUB_OFFLINE") == "1" or os.getenv("TRANSFORMERS_OFFLINE") == "1"
+                logger.info(f"[Ensemble] Loading specialized detector 'umm-maybe/AI-image-detector' on {self.device} (offline={is_offline})...")
                 try:
                     proc = AutoImageProcessor.from_pretrained("umm-maybe/AI-image-detector", local_files_only=True)
                     mod = AutoModelForImageClassification.from_pretrained("umm-maybe/AI-image-detector", local_files_only=True).to(self.device)
-                except Exception:
+                except Exception as local_err:
+                    if is_offline:
+                        error_msg = (
+                            f"VEYRON_OFFLINE_MODELS is enabled but local cached files for 'umm-maybe/AI-image-detector' were not found: {local_err}. "
+                            "Please run with VEYRON_OFFLINE_MODELS=0 to populate Hugging Face cache."
+                        )
+                        logger.error(f"[Ensemble] {error_msg}")
+                        raise FileNotFoundError(error_msg) from local_err
+                    logger.info("[Ensemble] Local cache miss for 'umm-maybe/AI-image-detector', attempting online fetch...")
                     proc = AutoImageProcessor.from_pretrained("umm-maybe/AI-image-detector")
                     mod = AutoModelForImageClassification.from_pretrained("umm-maybe/AI-image-detector").to(self.device)
                 mod.eval()
@@ -1544,6 +1624,8 @@ class AIEnsembleClassifier:
                 logger.info("[Ensemble] 'umm-maybe/AI-image-detector' loaded successfully.")
             except Exception as exc:
                 logger.error(f"[Ensemble] Failed to load 'umm-maybe/AI-image-detector': {exc}")
+                if VEYRON_OFFLINE_MODELS or os.getenv("HF_HUB_OFFLINE") == "1":
+                    raise
 
     def _ensure_clip(self):
         with self._lock:
@@ -1552,11 +1634,20 @@ class AIEnsembleClassifier:
             try:
                 import torch
                 from transformers import CLIPProcessor, CLIPModel
-                logger.info(f"[Ensemble] Loading CLIP 'openai/clip-vit-base-patch32' on {self.device}...")
+                is_offline = VEYRON_OFFLINE_MODELS or os.getenv("HF_HUB_OFFLINE") == "1" or os.getenv("TRANSFORMERS_OFFLINE") == "1"
+                logger.info(f"[Ensemble] Loading CLIP 'openai/clip-vit-base-patch32' on {self.device} (offline={is_offline})...")
                 try:
                     proc = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32", local_files_only=True)
                     mod = CLIPModel.from_pretrained("openai/clip-vit-base-patch32", local_files_only=True).to(self.device)
-                except Exception:
+                except Exception as local_err:
+                    if is_offline:
+                        error_msg = (
+                            f"VEYRON_OFFLINE_MODELS is enabled but local cached files for 'openai/clip-vit-base-patch32' were not found: {local_err}. "
+                            "Please run with VEYRON_OFFLINE_MODELS=0 to populate Hugging Face cache."
+                        )
+                        logger.error(f"[Ensemble] {error_msg}")
+                        raise FileNotFoundError(error_msg) from local_err
+                    logger.info("[Ensemble] Local cache miss for 'openai/clip-vit-base-patch32', attempting online fetch...")
                     proc = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
                     mod = CLIPModel.from_pretrained("openai/clip-vit-base-patch32").to(self.device)
                 mod.eval()
@@ -1565,6 +1656,8 @@ class AIEnsembleClassifier:
                 logger.info("[Ensemble] CLIP loaded successfully.")
             except Exception as exc:
                 logger.warning(f"[Ensemble] Failed to load CLIP: {exc}")
+                if VEYRON_OFFLINE_MODELS or os.getenv("HF_HUB_OFFLINE") == "1":
+                    raise
 
     def score_specialized(self, rgb_pil) -> ModelResult:
         self._ensure_specialized()
@@ -1581,8 +1674,12 @@ class AIEnsembleClassifier:
             import torch
             t0 = time.perf_counter()
             inputs = AIEnsembleClassifier._spec_processor(images=rgb_pil, return_tensors="pt").to(self.device)
-            with torch.no_grad():
-                logits = AIEnsembleClassifier._spec_model(**inputs).logits
+            with torch.inference_mode():
+                if INFERENCE_PRECISION == "fp16" and self.device == "cuda":
+                    with torch.autocast(device_type="cuda", dtype=torch.float16):
+                        logits = AIEnsembleClassifier._spec_model(**inputs).logits
+                else:
+                    logits = AIEnsembleClassifier._spec_model(**inputs).logits
             probs = torch.softmax(logits, dim=-1)[0].cpu().tolist()
             id2label = AIEnsembleClassifier._spec_model.config.id2label
             scores = {id2label[i].lower(): float(probs[i]) for i in range(len(probs))}
@@ -1631,8 +1728,12 @@ class AIEnsembleClassifier:
             inputs = AIEnsembleClassifier._clip_processor(
                 text=all_prompts, images=rgb_pil, return_tensors="pt", padding=True
             ).to(self.device)
-            with torch.no_grad():
-                out = AIEnsembleClassifier._clip_model(**inputs)
+            with torch.inference_mode():
+                if INFERENCE_PRECISION == "fp16" and self.device == "cuda":
+                    with torch.autocast(device_type="cuda", dtype=torch.float16):
+                        out = AIEnsembleClassifier._clip_model(**inputs)
+                else:
+                    out = AIEnsembleClassifier._clip_model(**inputs)
                 logits = out.logits_per_image[0]
                 clip_probs = torch.softmax(logits, dim=-1).cpu().tolist()
             
@@ -2233,10 +2334,8 @@ def analyze_portrait_forensics(bgr: np.ndarray, faces: List[np.ndarray], ctype: 
             human_readable=f"Portrait forensic signal checking for {k.replace('_', ' ')} inconsistencies."
         ))
         
-    # GC cleanup
+    # Cleanup temporary grayscale array
     del gray
-    import gc
-    gc.collect()
     
     return final_signals
 
@@ -2584,16 +2683,18 @@ def fuse_signals(
     }
 
     # Log DEBUG analysis in backend logs
+    spec_score = debug_analysis["specialized_detector"]["score"]
+    clip_score = debug_analysis["clip_aggregate_score"]
     logger.info(
-        "[DEBUG ANALYSIS] file=%s sha256=%s verdict=%s conf=%.3f device=%s level=%s | specialized_ai=%.3f clip_ai=%.3f cam_prov=%.3f ai_prov=%.3f c2pa_detected=%s google_detected=%s",
+        "[DEBUG ANALYSIS] file=%s sha256=%s verdict=%s conf=%.3f device=%s level=%s | specialized_ai=%s clip_ai=%s cam_prov=%.3f ai_prov=%.3f c2pa_detected=%s google_detected=%s",
         debug_analysis["file_name"],
         debug_analysis["sha256"][:12],
         debug_analysis["final_verdict"],
         debug_analysis["final_confidence"],
         debug_analysis["device"],
         debug_analysis["decision_hierarchy_level_triggered"],
-        debug_analysis["specialized_detector"]["score"],
-        debug_analysis["clip_aggregate_score"],
+        f"{spec_score:.3f}" if spec_score is not None else "None",
+        f"{clip_score:.3f}" if clip_score is not None else "None",
         debug_analysis["camera_provenance_score"],
         debug_analysis["ai_provenance_score"],
         debug_analysis["c2pa_fields_detected"]["c2pa_detected"],

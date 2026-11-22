@@ -51,6 +51,13 @@ async def lifespan(_: FastAPI):
     threading.Thread(target=deepfake_pipeline.preload_models, daemon=True, name="model-preload").start()
         
     yield
+    # Graceful cleanup of MediaPipe resources
+    if hasattr(deepfake_pipeline, "close_mediapipe_detector"):
+        try:
+            deepfake_pipeline.close_mediapipe_detector()
+            logger.info("[Shutdown] MediaPipe detector resources safely released.")
+        except Exception as _e:
+            logger.warning("[Shutdown] Error releasing MediaPipe detector: %s", _e)
 
 
 class SanitizedJSONResponse(JSONResponse):
@@ -88,6 +95,8 @@ WINDOW_SECONDS = 60
 EXPENSIVE_ENDPOINT_LIMITS = {
     "/api/detect-deepfake": 20,
     "/api/scan-link": 40,
+    "/api/scan-qr": 40,
+    "/api/scan-qr-payload": 60,
     "/api/chat": 60,
 }
 ip_hits: Dict[str, Deque[float]] = defaultdict(deque)

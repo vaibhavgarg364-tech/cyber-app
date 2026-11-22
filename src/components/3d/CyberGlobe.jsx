@@ -9,12 +9,9 @@ import * as THREE from 'three';
  */
 const GLOBE_CURVATURE_RESOLUTION = 360 / 128;
 
-const TEX_EARTH_COLOR =
-  'https://raw.githubusercontent.com/vasturiano/three-globe/master/example/img/earth-blue-marble.jpg';
-const TEX_EARTH_TOPOLOGY =
-  'https://raw.githubusercontent.com/vasturiano/three-globe/master/example/img/earth-topology.png';
-const TEX_EARTH_NIGHT =
-  'https://raw.githubusercontent.com/vasturiano/three-globe/master/example/img/earth-night.jpg';
+const TEX_EARTH_COLOR = '/textures/earth-dark-cyber.jpg';
+const TEX_EARTH_TOPOLOGY = '/textures/earth-topology.png';
+const TEX_EARTH_NIGHT = '/textures/earth-night.jpg';
 
 const SPHERE_WIDTH_SEGMENTS = 128;
 const SPHERE_HEIGHT_SEGMENTS = 128;
@@ -339,58 +336,13 @@ export default function CyberGlobe() {
   const controlsReadyRef = useRef(false);
   const nightTexRef = useRef(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const [globeImageUrl, setGlobeImageUrl] = useState(() => makeFallbackEarthTextureDataUrl());
+  const [globeImageUrl, setGlobeImageUrl] = useState(TEX_EARTH_COLOR);
   const [activeArcKeys, setActiveArcKeys] = useState(() => [0, 1, 2, 3, 4]);
 
   const activeArcs = useMemo(
     () => activeArcKeys.map((k) => ARC_POOL[k]).filter(Boolean),
     [activeArcKeys]
   );
-
-  useEffect(() => {
-    let cancelled = false;
-    loadTexture(TEX_EARTH_COLOR)
-      .then((tex) => {
-        if (cancelled) {
-          tex.dispose();
-          return;
-        }
-        try {
-          const canvas = document.createElement('canvas');
-          const w = 2048;
-          const h = 1024;
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) {
-            tex.dispose();
-            return;
-          }
-          const bmp = tex.image;
-          ctx.drawImage(bmp, 0, 0, w, h);
-          ctx.save();
-          ctx.globalCompositeOperation = 'multiply';
-          ctx.fillStyle = 'rgba(4, 36, 52, 0.14)';
-          ctx.fillRect(0, 0, w, h);
-          ctx.restore();
-          ctx.save();
-          ctx.globalCompositeOperation = 'overlay';
-          ctx.fillStyle = 'rgba(0, 140, 210, 0.06)';
-          ctx.fillRect(0, 0, w, h);
-          ctx.restore();
-          tex.dispose();
-          setGlobeImageUrl(canvas.toDataURL('image/jpeg', 0.94));
-        } catch {
-          setGlobeImageUrl(TEX_EARTH_COLOR);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setGlobeImageUrl(makeFallbackEarthTextureDataUrl());
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     const rotate = () => {
@@ -411,14 +363,19 @@ export default function CyberGlobe() {
   }, []);
 
   const syncEarthMesh = useCallback((globe) => {
-    if (!globe?.scene || !globe.getGlobeRadius) return;
+    if (!globe?.scene || !globe.getGlobeRadius) return false;
     const scene = globe.scene();
     const r = globe.getGlobeRadius();
     const mesh = findGlobeSurfaceMesh(scene);
-    if (!mesh) return;
-    ensureSphereGeometry(mesh, r);
-    configureGlobeEarthMaterial(mesh, nightTexRef.current);
-    styleGraticules(scene);
+    if (!mesh) return false;
+
+    if (!mesh.__veyronConfigured) {
+      ensureSphereGeometry(mesh, r);
+      configureGlobeEarthMaterial(mesh, nightTexRef.current);
+      styleGraticules(scene);
+      mesh.__veyronConfigured = true;
+    }
+    return true;
   }, []);
 
   useEffect(() => {
@@ -431,18 +388,22 @@ export default function CyberGlobe() {
         }
         nightTexRef.current = tex;
         const globe = globeRef.current;
-        const mesh = globe?.scene ? findGlobeSurfaceMesh(globe.scene()) : null;
-        if (mesh) configureGlobeEarthMaterial(mesh, tex);
-        else if (globe) syncEarthMesh(globe);
+        if (globe?.scene) {
+          const mesh = findGlobeSurfaceMesh(globe.scene());
+          if (mesh) configureGlobeEarthMaterial(mesh, tex);
+        }
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.warn('[CyberGlobe] Night texture offline fallback:', err);
+      });
     return () => {
       cancelled = true;
-      const t = nightTexRef.current;
-      nightTexRef.current = null;
-      t?.dispose();
+      if (nightTexRef.current) {
+        nightTexRef.current.dispose();
+        nightTexRef.current = null;
+      }
     };
-  }, [syncEarthMesh]);
+  }, []);
 
   const applyGlobeVisualConfig = useCallback(
     (globe) => {
@@ -452,6 +413,7 @@ export default function CyberGlobe() {
       renderer.setClearColor(0x000000, 0);
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
       renderer.toneMappingExposure = 1.05;
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
 
       const scene = globe.scene();
       scene.fog = null;
@@ -465,40 +427,86 @@ export default function CyberGlobe() {
       rim.position.set(-4, 8, -10);
       globe.lights([ambient, key, fill, rim]);
 
-      if (!controlsReadyRef.current && globe.controls) {
+      const prefersReduced =
+        typeof window !== 'undefined' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      const targetRotateSpeed = prefersReduced ? 0.35 : 0.85;
+
+      if (globe.controls) {
         const controls = globe.controls();
-        controls.autoRotate = true;
-        controls.autoRotateSpeed = 0.26;
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.082;
-        controls.enablePan = false;
-        controls.enableZoom = false;
-        controls.rotateSpeed = 0.32;
-        controls.minPolarAngle = Math.PI * 0.22;
-        controls.maxPolarAngle = Math.PI * 0.78;
-        controlsReadyRef.current = true;
+        if (controls) {
+          controls.autoRotate = true;
+          controls.autoRotateSpeed = targetRotateSpeed;
+          controls.enableDamping = true;
+          controls.dampingFactor = 0.082;
+          controls.enablePan = false;
+          controls.enableZoom = false;
+          controls.rotateSpeed = 0.32;
+          controls.minPolarAngle = Math.PI * 0.22;
+          controls.maxPolarAngle = Math.PI * 0.78;
+          controls.update?.();
+          controlsReadyRef.current = true;
+        }
       }
 
       globe.pointOfView({ lat: 14, lng: -18, altitude: 1.56 }, 900);
+
+      // Re-assert auto-rotation after pointOfView tween completes
+      window.setTimeout(() => {
+        const c = globe.controls?.();
+        if (c) {
+          c.autoRotate = true;
+          c.autoRotateSpeed = targetRotateSpeed;
+          c.update?.();
+        }
+      }, 1050);
 
       syncEarthMesh(globe);
     },
     [syncEarthMesh]
   );
 
-  useEffect(() => () => {
-    controlsReadyRef.current = false;
+  useEffect(() => {
+    const handleVisibility = () => {
+      const globe = globeRef.current;
+      if (!globe?.controls) return;
+      const controls = globe.controls();
+      if (!controls) return;
+      if (document.hidden) {
+        controls.autoRotate = false;
+      } else {
+        const prefersReduced =
+          typeof window !== 'undefined' &&
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = prefersReduced ? 0.35 : 0.85;
+        controls.update?.();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, []);
 
   useEffect(() => {
-    const timers = [40, 200, 600, 1400].map((ms) =>
-      window.setTimeout(() => {
+    if (size.width > 0 && size.height > 0) {
+      const timer = window.setTimeout(() => {
         const globe = globeRef.current;
-        if (globe) syncEarthMesh(globe);
-      }, ms)
-    );
-    return () => timers.forEach((t) => window.clearTimeout(t));
-  }, [globeImageUrl, syncEarthMesh]);
+        if (globe?.controls) {
+          const controls = globe.controls();
+          if (controls) {
+            controls.autoRotate = true;
+            controls.autoRotateSpeed = 0.85;
+            controls.update?.();
+          }
+        }
+      }, 600);
+      return () => window.clearTimeout(timer);
+    }
+  }, [size]);
 
   const bgParticles = useMemo(() => {
     const rand = mulberry32(9001);
@@ -600,9 +608,21 @@ export default function CyberGlobe() {
         return;
       }
       applyGlobeVisualConfig(globe);
+
+      // Bounded mesh sync loop (polls up to 30 animation frames until surface mesh is mounted)
+      let frames = 0;
+      const maxFrames = 30;
+      const checkMesh = () => {
+        const done = syncEarthMesh(globe);
+        if (!done && frames < maxFrames) {
+          frames++;
+          requestAnimationFrame(checkMesh);
+        }
+      };
+      requestAnimationFrame(checkMesh);
     };
     queueMicrotask(run);
-  }, [applyGlobeVisualConfig]);
+  }, [applyGlobeVisualConfig, syncEarthMesh]);
 
   const globeYOffset = size.height > 0 ? Math.round(size.height * 0.022) : 0;
 

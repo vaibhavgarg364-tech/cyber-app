@@ -2,9 +2,11 @@ import hashlib
 import logging
 import re
 import time
+import socket
+import ipaddress
 from datetime import datetime, timezone
-from typing import Any, Dict, List
-from urllib.parse import urlparse
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse, urljoin
 
 import requests
 import numpy as np
@@ -125,14 +127,217 @@ def safe_request_json(
 import tempfile
 import os
 
+def parse_alternate_ip(host: str) -> Optional[ipaddress.IPv4Address | ipaddress.IPv6Address]:
+    """
+    Parses IP addresses in standard or alternate encodings (decimal integer,
+    hexadecimal, dotted octal, dotted hex, IPv6-mapped IPv4).
+    Returns an ipaddress object if valid, else None.
+    """
+    clean = host.strip("[]").strip()
+    try:
+        return ipaddress.ip_address(clean)
+    except ValueError:
+        pass
+
+    # Decimal integer IP (e.g., 2130706433 = 127.0.0.1, 2852039166 = 169.254.169.254)
+    if clean.isdigit():
+        try:
+            val = int(clean)
+            if 0 <= val <= 0xFFFFFFFF:
+                return ipaddress.IPv4Address(val)
+        except ValueError:
+            pass
+
+    # Hexadecimal integer IP (e.g., 0x7f000001 = 127.0.0.1)
+    if clean.lower().startswith("0x"):
+        try:
+            val = int(clean, 16)
+            if 0 <= val <= 0xFFFFFFFF:
+                return ipaddress.IPv4Address(val)
+        except ValueError:
+            pass
+
+    # Dotted octal or dotted hex representation (e.g. 0177.0.0.1 or 0x7f.0.0.1)
+    parts = clean.split(".")
+    if len(parts) == 4:
+        try:
+            octets = []
+            for p in parts:
+                if p.lower().startswith("0x"):
+                    octets.append(int(p, 16))
+                elif p.startswith("0") and len(p) > 1 and p.isdigit():
+                    octets.append(int(p, 8))
+                elif p.isdigit():
+                    octets.append(int(p, 10))
+                else:
+                    return None
+            if all(0 <= o <= 255 for o in octets):
+                return ipaddress.IPv4Address((octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3])
+        except Exception:
+            pass
+
+    return None
+
+
+def is_restricted_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address | str) -> Tuple[bool, Optional[str]]:
+    """
+    Evaluates whether an IP address targets a restricted/internal destination.
+    Properly handles IPv4, IPv6, IPv4-mapped IPv6 (::ffff:0:0/96), and
+    NAT64 translation prefixes (64:ff9b::/96 RFC 6052, 64:ff9b:1::/48 RFC 8215).
+    """
+    if isinstance(ip, str):
+        try:
+            ip = ipaddress.ip_address(ip)
+        except ValueError:
+            return True, f"Invalid IP address format ({ip})"
+
+    if isinstance(ip, ipaddress.IPv4Address):
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
+            return True, f"Restricted/internal IPv4 address ({ip})"
+        return False, None
+
+    # IPv6 checks
+    # 1. IPv4-mapped IPv6 (::ffff:127.0.0.1)
+    if ip.ipv4_mapped:
+        return is_restricted_ip(ip.ipv4_mapped)
+
+    # 2. NAT64 translation prefixes (RFC 6052 WKP 64:ff9b::/96 and RFC 8215 Local 64:ff9b:1::/48)
+    nat64_wkp = ipaddress.IPv6Network("64:ff9b::/96")
+    nat64_local = ipaddress.IPv6Network("64:ff9b:1::/48")
+    if ip in nat64_wkp or ip in nat64_local:
+        # Extract embedded 32-bit IPv4 address from lower bits
+        embedded_ipv4 = ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
+        is_restricted, reason = is_restricted_ip(embedded_ipv4)
+        if is_restricted:
+            return True, f"NAT64 address embeds restricted IPv4 address ({embedded_ipv4}): {reason}"
+        # If the embedded IPv4 address is a public, routable IP, it is safe public NAT64 traffic
+        return False, None
+
+    # 3. Standard IPv6 restricted ranges
+    if (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    ):
+        return True, f"Restricted/internal IPv6 address ({ip})"
+
+    return False, None
+
+
+def is_safe_public_url(url: str) -> Tuple[bool, str | None]:
+    """
+    Validates whether a URL targets a safe, public internet endpoint.
+    Blocks SSRF targets: localhost, 127.0.0.1, alternate IP representations (int/hex/octal),
+    private RFC-1918 ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16), link-local /
+    cloud metadata (169.254.169.254, fd00:ec2::254), loopback IPv6 (::1), multicast,
+    restricted internal ports, and non-http(s) schemes.
+    Properly permits public IPv4 endpoints reached via NAT64 translation (RFC 6052).
+    Returns (is_safe, error_message).
+    """
+    if not url or not isinstance(url, str):
+        return False, "Invalid URL input."
+
+    try:
+        parsed = urlparse(url.strip())
+    except Exception:
+        return False, "Invalid URL format."
+
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in {"http", "https"}:
+        return False, f"Unsupported URL scheme '{scheme}'. Only http and https are permitted."
+
+    hostname = (parsed.hostname or "").strip().lower()
+    if not hostname:
+        return False, "URL does not contain a valid hostname."
+
+    # Immediate string check for loopback, local domains, or common SSRF aliases
+    if hostname in {"localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"}:
+        return False, "Access to localhost or loopback addresses is forbidden."
+
+    # Reject cloud metadata hostnames directly
+    metadata_hosts = {
+        "metadata.google.internal", "instance-data", "metadata",
+        "metadata.nic.in", "169.254.169.254", "fd00:ec2::254"
+    }
+    if hostname in metadata_hosts:
+        return False, "Access to internal cloud metadata service is forbidden."
+
+    # Port restriction: block known internal database / administrative service ports
+    restricted_ports = {22, 25, 111, 2375, 2376, 2379, 3306, 5432, 6379, 8500, 9200, 11211, 27017}
+    if parsed.port and parsed.port in restricted_ports:
+        return False, f"Access to restricted internal service port ({parsed.port}) is blocked."
+
+    # Check for direct or alternate IP representation before DNS
+    direct_ip = parse_alternate_ip(hostname)
+    if direct_ip:
+        restricted, reason = is_restricted_ip(direct_ip)
+        if restricted:
+            return False, f"Target host represents a restricted/internal IP address ({direct_ip}): {reason}. Request blocked for SSRF protection."
+
+    # Resolve IP addresses (handles both IPv4 and IPv6)
+    try:
+        addr_info = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        # DNS failed to resolve — not an internal IP, safe to let downstream handle or report
+        return True, None
+    except Exception as exc:
+        return False, f"Host address resolution error: {exc}"
+
+    for item in addr_info:
+        ip_str = item[4][0]
+        try:
+            ip = ipaddress.ip_address(ip_str)
+            restricted, reason = is_restricted_ip(ip)
+            if restricted:
+                return False, f"Target host resolves to restricted/internal IP address ({ip_str}): {reason}. Request blocked for SSRF protection."
+        except ValueError:
+            return False, f"Invalid resolved IP format ({ip_str})."
+
+    return True, None
+
+
 def download_media_from_url(url: str, max_size_mb: int = 55, timeout: int = 15) -> tuple[str | None, str | None]:
     """
     Safely downloads media from a URL to a temporary file.
+    Follows redirects hop-by-hop, verifying SSRF protection at every redirect.
     Returns (temp_file_path, error_message).
-    Enforces size limits and validates mime types basically.
     """
+    current_url = url
+    max_hops = 5
+    resp = None
+
     try:
-        resp = requests.get(url, stream=True, timeout=timeout, headers={"User-Agent": "veyron-backend"})
+        for _ in range(max_hops):
+            is_safe, ssrf_err = is_safe_public_url(current_url)
+            if not is_safe:
+                return None, ssrf_err or "Access to the requested URL is forbidden (SSRF protection)."
+
+            resp = requests.get(
+                current_url,
+                stream=True,
+                timeout=timeout,
+                allow_redirects=False,
+                headers={"User-Agent": "veyron-backend"}
+            )
+            if resp.is_redirect and "Location" in resp.headers:
+                next_url = urljoin(current_url, resp.headers["Location"])
+                current_url = next_url
+            else:
+                break
+
+        if resp is None:
+            return None, "Failed to initiate media download request."
+
         resp.raise_for_status()
         
         content_type = resp.headers.get("Content-Type", "").lower()

@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Bot, Eye, FileText, Link2, Mail, Zap, AlertOctagon, Code2, HeartHandshake, Shield } from 'lucide-react';
+import { Bot, Eye, FileText, Link2, Mail, Zap, AlertOctagon, Code2, HeartHandshake, Shield, QrCode } from 'lucide-react';
 import { useLang } from '../context/LanguageContext';
 import CyberGlobe from '../components/3d/CyberGlobe.jsx';
 import AmbientParticles from '../components/3d/AmbientParticles';
@@ -14,7 +14,8 @@ interface HomeProps {
 const features = [
   { key: 'deepfake', icon: Eye, en: 'Deepfake Detector', hi: 'डीपफेक डिटेक्टर', descEn: 'Screen media for synthetic signals', descHi: 'मीडिया में संश्लेषित संकेतों की जांच', color: 'from-cyan-500 to-blue-600' },
   { key: 'scanner', icon: Link2, en: 'Link Scanner', hi: 'लिंक स्कैनर', descEn: 'Verify URL safety instantly', descHi: 'URL सुरक्षा तुरंत जांचें', color: 'from-blue-500 to-indigo-600' },
-  { key: 'spam', icon: Mail, en: 'Email Checker', hi: 'ईमेल चेकर', descEn: 'Check breach exposure', descHi: 'ब्रीच एक्सपोजर जांचें', color: 'from-teal-500 to-cyan-600' },
+  { key: 'qrshield', icon: QrCode, en: 'QR Shield', hi: 'क्यूआर शील्ड', descEn: 'Zero-trust QR fraud engine', descHi: 'ज़ीरो-ट्रस्ट क्यूआर धोखाधड़ी रोकथाम', color: 'from-teal-500 to-cyan-600' },
+  { key: 'spam', icon: Mail, en: 'Email Checker', hi: 'ईमेल चेकर', descEn: 'Check breach exposure', descHi: 'ब्रीच एक्सपोजर जांचें', color: 'from-cyan-500 to-blue-600' },
   { key: 'complaints', icon: FileText, en: 'Complaint Hub', hi: 'शिकायत केंद्र', descEn: 'File official complaints', descHi: 'आधिकारिक शिकायत दर्ज करें', color: 'from-red-500 to-orange-600' },
   { key: 'app', icon: Code2, en: 'App Checker', hi: 'ऐप चेकर', descEn: 'Analyze app security', descHi: 'ऐप सुरक्षा विश्लेषण करें', color: 'from-purple-500 to-pink-600' },
   { key: 'rootcause', icon: Zap, en: 'Root Cause', hi: 'कारण विश्लेषण', descEn: 'Understand attack vectors', descHi: 'हमले के तरीके समझें', color: 'from-yellow-500 to-orange-600' },

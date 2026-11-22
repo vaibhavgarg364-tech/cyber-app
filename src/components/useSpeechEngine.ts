@@ -33,6 +33,8 @@ export interface SpeechEngine {
   ttsSupported: boolean;
   speakText: (text: string) => void;
   stopSpeaking: () => void;
+  activeVoiceName: string;
+  previewVoice: () => void;
 
   voiceError: string;
   clearVoiceError: () => void;
@@ -40,8 +42,16 @@ export interface SpeechEngine {
 
 // ── Minimal Web Speech API typings (not in lib.dom for all TS versions) ──
 
+interface SpeechRecognitionAlternativeLike {
+  transcript: string;
+}
+
+interface SpeechRecognitionResultLike extends ArrayLike<SpeechRecognitionAlternativeLike> {
+  isFinal?: boolean;
+}
+
 interface SpeechRecognitionResultEventLike {
-  results: ArrayLike<ArrayLike<{ transcript: string }>>;
+  results: ArrayLike<SpeechRecognitionResultLike>;
 }
 
 interface SpeechRecognitionErrorEventLike {
@@ -79,35 +89,158 @@ function getSpeechRecognitionCtor(): SpeechRecognitionCtor | undefined {
   return w.SpeechRecognition || w.webkitSpeechRecognition;
 }
 
-// ── TTS text cleaning — remove all markdown artifacts for natural speech ──
+// ── Dynamic language detector — detects Devanagari vs Latin/Hinglish ──
 
-function cleanTextForSpeech(text: string): string {
+export function detectSpeechLanguage(text: string): 'hi-IN' | 'en-IN' {
+  if (!text) return 'en-IN';
+  // Check for Devanagari Unicode block (Hindi)
+  if (/[\u0900-\u097F]/.test(text)) {
+    return 'hi-IN';
+  }
+  return 'en-IN';
+}
+
+// ── TTS voice selection — strictly favors calm, natural female personas ──
+
+export function getBestVoice(voices: SpeechSynthesisVoice[], targetLang: string): SpeechSynthesisVoice | null {
+  if (!voices || voices.length === 0) return null;
+
+  const langCode = targetLang.toLowerCase().replace('_', '-');
+  const langPrefix = langCode.split(/[-_]/)[0]; // e.g. 'en' or 'hi'
+
+  const scoreVoice = (v: SpeechSynthesisVoice): number => {
+    const vLang = (v.lang || '').toLowerCase().replace('_', '-');
+    const name = (v.name || '').toLowerCase();
+    let score = 0;
+
+    // 1. Strict male voice penalty — CyberSaathi is a female assistant persona.
+    // Never allow male voices (e.g., Ravi, Rishi, Madhur, Hemant, David, George, Guy).
+    if (/\b(male|david|mark|george|ravi|rishi|madhur|hemant|guy|brian|eric|stefan|james|paul|richard|sean|steffan|alex|fred)\b/i.test(name)) {
+      return -5000;
+    }
+
+    // 2. Language match scoring
+    if (vLang === langCode) {
+      score += 120;
+    } else if (vLang.startsWith(langPrefix)) {
+      score += 60;
+    } else {
+      return -2000; // Incompatible language
+    }
+
+    // 3. Female persona bonus
+    if (/female/i.test(name)) {
+      score += 50;
+    }
+
+    // 4. Natural / Neural / Cloud voice priority
+    if (/natural|neural|online/i.test(name)) {
+      score += 150;
+    }
+    if (/google/i.test(name)) {
+      score += 85;
+    }
+
+    // 5. Target curated female personas for Hindi & Indian English
+    if (langPrefix === 'hi') {
+      if (/swara/i.test(name)) score += 260; // Microsoft Swara Online (Natural) - Hindi
+      else if (/kalpana/i.test(name)) score += 160;
+      else if (/hindi/i.test(name)) score += 80;
+    } else {
+      // English / Hinglish
+      if (/neerja/i.test(name)) score += 260; // Microsoft Neerja Online (Natural) - English (India)
+      else if (/heera/i.test(name)) score += 180;
+      else if (/veena/i.test(name)) score += 150;
+      else if (/priya|sangeeta/i.test(name)) score += 140;
+      else if (/jenny|aria|sonia|natasha|samantha/i.test(name)) score += 110;
+      else if (/zira/i.test(name)) score += 40;
+
+      if (/india/i.test(vLang) || /in\b/i.test(vLang)) score += 50; // Indian English preferred
+    }
+
+    // 6. Explicitly penalize legacy, flat robotic synthesizers
+    if (/desktop|sapi|hazel|susan|espeak/i.test(name)) {
+      score -= 75;
+    }
+
+    return score;
+  };
+
+  let bestVoice: SpeechSynthesisVoice | null = null;
+  let bestScore = -1999;
+
+  for (const voice of voices) {
+    const score = scoreVoice(voice);
+    if (score > bestScore) {
+      bestScore = score;
+      bestVoice = voice;
+    }
+  }
+
+  // Fallback 1: If no high-confidence match, find any non-male voice matching langPrefix
+  if (!bestVoice || bestScore < 0) {
+    bestVoice = voices.find((v) => {
+      const vLang = (v.lang || '').toLowerCase();
+      const name = (v.name || '').toLowerCase();
+      const isMale = /\b(male|david|mark|george|ravi|rishi|madhur|hemant|guy|brian|eric|stefan)\b/i.test(name);
+      return !isMale && vLang.startsWith(langPrefix);
+    }) || null;
+  }
+
+  // Fallback 2: Any voice matching langPrefix if strictly necessary
+  if (!bestVoice) {
+    bestVoice = voices.find((v) => (v.lang || '').toLowerCase().startsWith(langPrefix)) || null;
+  }
+
+  return bestVoice;
+}
+
+// ── TTS text cleaning — strip markdown artifacts and format cybersecurity terms ──
+
+export function cleanTextForSpeech(text: string): string {
+  if (!text) return '';
   return text
-    // Remove code blocks entirely (not relevant for speech)
+    // Remove code blocks entirely
     .replace(/```[\s\S]*?```/g, '')
     // Remove inline code ticks
-    .replace(/`[^`]+`/g, (match) => match.slice(1, -1))
+    .replace(/`([^`]+)`/g, '$1')
     // Remove markdown links [text](url) → text
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    // Remove raw URLs (don't read them aloud)
+    // Remove raw URLs (don't read out full http/https URLs)
     .replace(/https?:\/\/[^\s,)]+/g, '')
     // Remove markdown headers ### Header → Header
     .replace(/^#+\s+/gm, '')
+    // Remove blockquotes > Quote → Quote
+    .replace(/^>\s+/gm, '')
     // Remove bold/italic markers but keep text
     .replace(/(\*\*\*|___)(.*?)\1/g, '$2')
     .replace(/(\*\*|__)(.*?)\1/g, '$2')
     .replace(/(\*|_)(.*?)\1/g, '$2')
+    .replace(/~~(.*?)~~/g, '$1')
     // Remove bullet points (-, *, •, 1.) at start of lines
     .replace(/^[\s]*[-*+•]\s+/gm, '')
     .replace(/^[\s]*\d+\.\s+/gm, '')
-    // Remove emoji sequences (they cause TTS to say "emoji" or garble)
+    // Remove emoji sequences
     .replace(/\p{Extended_Pictographic}|\u{FE0F}|\u{200D}/gu, '')
     // Remove horizontal rules (===, ---, ***)
     .replace(/^[-=*_]{3,}$/gm, '')
     // Remove excessive symbols
     .replace(/[-=_]{2,}/g, ' ')
-    // Clean up "cybercrime.gov.in" → "cybercrime dot gov dot in" for clarity
-    .replace(/(\w+)\.gov\.in/g, '$1 dot gov dot in')
+    // Clear pronunciation for security & Indian telecom/cyber terms
+    .replace(/\b1930\b/g, 'one nine three zero')
+    .replace(/(\w+)\.gov\.in/gi, '$1 dot gov dot in')
+    .replace(/\bOTP\b/g, 'O T P')
+    .replace(/\bOTPs\b/g, 'O T P s')
+    .replace(/\bURL\b/g, 'U R L')
+    .replace(/\bURLs\b/g, 'U R L s')
+    .replace(/\bSMS\b/g, 'S M S')
+    .replace(/\bFIR\b/g, 'F I R')
+    .replace(/\bKYC\b/g, 'K Y C')
+    .replace(/\bUPI\b/g, 'U P I')
+    .replace(/\bAPK\b/g, 'A P K')
+    // Convert colons, semicolons, em-dashes to gentle comma pauses for natural cadence
+    .replace(/[:;—]/g, ', ')
+    .replace(/--+/g, ', ')
     // Add space after Hindi Purna Viram if missing to ensure split works
     .replace(/।/g, '। ')
     // Replace newlines with natural pause markers
@@ -116,15 +249,15 @@ function cleanTextForSpeech(text: string): string {
     .replace(/\s+/g, ' ')
     // Clean up artifact periods (.. or ... from newline replacement)
     .replace(/\.{2,}/g, '.')
-    // Remove leading/trailing periods and spaces
-    .replace(/^\.\s*/, '')
+    // Remove leading/trailing periods, commas and spaces
+    .replace(/^[\s.,]+/, '')
     .trim();
 }
 
 // ── Split text into natural sentence chunks for smoother TTS ──
 // Chrome has a ~200-300 char limit where it may cut off; chunking prevents this.
 
-function splitIntoSentences(text: string): string[] {
+export function splitIntoSentences(text: string): string[] {
   if (text.length < 200) return [text];
 
   // Split on sentence terminators: . ? ! Hindi purna viram (।) and newlines (never commas)
@@ -178,25 +311,111 @@ export function useSpeechEngine(options: SpeechEngineOptions): SpeechEngine {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [ttsSupported, setTtsSupported] = useState(false);
+  const [activeVoiceName, setActiveVoiceName] = useState('');
 
   // ── Refs ──
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const isListeningRef = useRef(false);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const ttsQueueRef = useRef<string[]>([]);
   const ttsCancelledRef = useRef(false);
   const ttsSessionRef = useRef(0);
-  const keepAliveTimerRef = useRef<any>(null);
+  const keepAliveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Check browser support on mount
+  // Transcript tracking for continuous voice typing
+  const baseTranscriptRef = useRef('');
+  const finalTranscriptRef = useRef('');
+
+  // ── Deterministic Voice Cache ──
+  const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
+  const preferredHindiVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
+  const preferredEnglishVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
+  const sessionVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
+
+  // Stop speaking helper (needed early for microphone mutual-exclusion)
+  const clearKeepAlive = useCallback(() => {
+    if (keepAliveTimerRef.current) {
+      clearInterval(keepAliveTimerRef.current);
+      keepAliveTimerRef.current = null;
+    }
+  }, []);
+
+  const stopSpeaking = useCallback(() => {
+    ttsSessionRef.current += 1;
+    ttsCancelledRef.current = true;
+    ttsQueueRef.current = [];
+    clearKeepAlive();
+    try {
+      window.speechSynthesis?.cancel();
+    } catch {
+      // ignore
+    }
+    utteranceRef.current = null;
+    setIsSpeaking(false);
+  }, [clearKeepAlive]);
+
+  // Enumerate voices once and resolve preferred female voices per language
+  const refreshVoices = useCallback(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    const v = window.speechSynthesis.getVoices();
+    if (!v || v.length === 0) return;
+
+    voicesRef.current = v;
+    const bestHi = getBestVoice(v, 'hi-IN');
+    const bestEn = getBestVoice(v, 'en-IN');
+    preferredHindiVoiceRef.current = bestHi;
+    preferredEnglishVoiceRef.current = bestEn;
+
+    const active = lang.toLowerCase().startsWith('hi') ? bestHi : bestEn;
+    if (active) {
+      setActiveVoiceName(active.name);
+    }
+  }, [lang]);
+
+  // Check browser support and pre-cache voices on mount
   useEffect(() => {
     const SR = getSpeechRecognitionCtor();
     setVoiceSupported(!!SR);
-    setTtsSupported(typeof window !== 'undefined' && 'speechSynthesis' in window);
-  }, []);
+    const hasTts = typeof window !== 'undefined' && 'speechSynthesis' in window;
+    setTtsSupported(hasTts);
+
+    if (hasTts) {
+      refreshVoices();
+      if (typeof window.speechSynthesis.addEventListener === 'function') {
+        window.speechSynthesis.addEventListener('voiceschanged', refreshVoices);
+      } else {
+        window.speechSynthesis.onvoiceschanged = refreshVoices;
+      }
+      return () => {
+        if (typeof window.speechSynthesis?.removeEventListener === 'function') {
+          window.speechSynthesis.removeEventListener('voiceschanged', refreshVoices);
+        } else if (window.speechSynthesis) {
+          window.speechSynthesis.onvoiceschanged = null;
+        }
+      };
+    }
+  }, [refreshVoices]);
+
+  // Deterministically switch active voice identity when user switches language in UI
+  useEffect(() => {
+    const isHi = lang.toLowerCase().startsWith('hi');
+    const target = isHi ? preferredHindiVoiceRef.current : preferredEnglishVoiceRef.current;
+    if (target) {
+      setActiveVoiceName(target.name);
+    } else if (voicesRef.current.length > 0) {
+      const fallback = getBestVoice(voicesRef.current, isHi ? 'hi-IN' : 'en-IN');
+      if (fallback) setActiveVoiceName(fallback.name);
+    }
+  }, [lang]);
 
   // ── STT Controls ──
 
   const destroyRecognition = useCallback(() => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
     if (recognitionRef.current) {
       recognitionRef.current.onstart = null;
       recognitionRef.current.onaudiostart = null;
@@ -216,6 +435,7 @@ export function useSpeechEngine(options: SpeechEngineOptions): SpeechEngine {
       }
       recognitionRef.current = null;
     }
+    isListeningRef.current = false;
     setIsListening(false);
   }, []);
 
@@ -225,12 +445,31 @@ export function useSpeechEngine(options: SpeechEngineOptions): SpeechEngine {
       destroyRecognition();
       ttsCancelledRef.current = true;
       ttsQueueRef.current = [];
+      clearKeepAlive();
       if (utteranceRef.current) {
         window.speechSynthesis?.cancel();
         utteranceRef.current = null;
       }
     };
-  }, [destroyRecognition]);
+  }, [destroyRecognition, clearKeepAlive]);
+
+  const stopListening = useCallback(() => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        // ignore
+      }
+    }
+
+    isListeningRef.current = false;
+    setIsListening(false);
+  }, []);
 
   const startListening = useCallback(() => {
     const SR = getSpeechRecognitionCtor();
@@ -239,39 +478,105 @@ export function useSpeechEngine(options: SpeechEngineOptions): SpeechEngine {
       return;
     }
 
-    // Completely destroy any existing instance
+    // Stop speaking immediately if assistant is active (mutual-exclusion)
+    stopSpeaking();
+
+    if (isListeningRef.current) {
+      return;
+    }
+
+    // Completely destroy any previous zombie instance
     destroyRecognition();
     setVoiceError('');
 
     const recognition = new SR();
     
-    // MINIMAL CONFIG
-    recognition.continuous = false;
+    // PRODUCTION STT CONFIG: continuous listening with progressive interim results
+    recognition.continuous = true;
     recognition.interimResults = true;
     recognition.maxAlternatives = 1;
     recognition.lang = lang;
 
+    // Capture baseline text before speech begins
+    baseTranscriptRef.current = transcript.trim() ? transcript.trim() + ' ' : '';
+    finalTranscriptRef.current = '';
+
     recognition.onstart = () => {
+      isListeningRef.current = true;
       setIsListening(true);
       setVoiceError('');
     };
 
     recognition.onresult = (event: SpeechRecognitionResultEventLike) => {
-      const text = event.results[0][0].transcript;
-      setTranscript(text);
+      let currentFinal = '';
+      let currentInterim = '';
+
+      for (let i = 0; i < event.results.length; ++i) {
+        const res = event.results[i];
+        const text = res[0]?.transcript || '';
+        if (res.isFinal) {
+          currentFinal += text;
+        } else {
+          currentInterim += text;
+        }
+      }
+
+      finalTranscriptRef.current = currentFinal;
+      const full = (baseTranscriptRef.current + currentFinal + (currentInterim ? ' ' + currentInterim : '')).trim();
+      setTranscript(full);
+
+      // Bounded silence detection: 2.5s of calm silence after speech automatically stops
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+      }
+      silenceTimerRef.current = setTimeout(() => {
+        stopListening();
+      }, 2500);
+    };
+
+    recognition.onspeechstart = () => {
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
+    };
+
+    recognition.onspeechend = () => {
+      // Natural speech clause ended; 1.5s boundary before finalizing
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+      }
+      silenceTimerRef.current = setTimeout(() => {
+        stopListening();
+      }, 1500);
     };
 
     recognition.onerror = (event: SpeechRecognitionErrorEventLike) => {
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
+
+      if (event.error === 'aborted') {
+        isListeningRef.current = false;
+        setIsListening(false);
+        return;
+      }
+
+      if (event.error === 'no-speech') {
+        // Harmless silence — user paused or ambient room noise did not form words
+        isListeningRef.current = false;
+        setIsListening(false);
+        return;
+      }
+
+      isListeningRef.current = false;
       setIsListening(false);
-      if (event.error === 'aborted') return;
 
       switch (event.error) {
         case 'not-allowed':
           setVoiceError('Microphone permission denied.');
           break;
-        case 'no-speech':
-          // Silent — user just didn't speak, not an error
-          break; 
         case 'audio-capture':
           setVoiceError('No microphone found.');
           break;
@@ -284,6 +589,16 @@ export function useSpeechEngine(options: SpeechEngineOptions): SpeechEngine {
     };
 
     recognition.onend = () => {
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
+      // Commit final text safely into state
+      const committed = (baseTranscriptRef.current + finalTranscriptRef.current).trim();
+      if (committed) {
+        setTranscript(committed);
+      }
+      isListeningRef.current = false;
       setIsListening(false);
       if (recognitionRef.current === recognition) {
         recognitionRef.current = null;
@@ -292,28 +607,14 @@ export function useSpeechEngine(options: SpeechEngineOptions): SpeechEngine {
 
     recognitionRef.current = recognition;
     
-    // Small delay to avoid Chrome race condition
-    setTimeout(() => {
-      try {
-        recognitionRef.current?.start();
-      } catch {
-        setIsListening(false);
-      }
-    }, 150);
-    
-  }, [voiceSupported, lang, destroyRecognition]);
-
-  const stopListening = useCallback(() => {
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch {
-        setIsListening(false);
-      }
-    } else {
+    // Start immediately without artificial setTimeout latency
+    try {
+      recognition.start();
+    } catch {
+      isListeningRef.current = false;
       setIsListening(false);
     }
-  }, []);
+  }, [voiceSupported, lang, transcript, destroyRecognition, stopSpeaking, stopListening]);
 
   const toggleListening = useCallback(() => {
     if (isListening) {
@@ -325,22 +626,15 @@ export function useSpeechEngine(options: SpeechEngineOptions): SpeechEngine {
 
   const clearTranscript = useCallback(() => {
     setTranscript('');
+    baseTranscriptRef.current = '';
+    finalTranscriptRef.current = '';
   }, []);
 
   const clearVoiceError = useCallback(() => {
     setVoiceError('');
   }, []);
 
-  // ── TTS Controls — Sentence-chunked with voice selection ──
-
-  // ── TTS Controls — Session-tracked with Chrome keepalive ──
-
-  const clearKeepAlive = useCallback(() => {
-    if (keepAliveTimerRef.current) {
-      clearInterval(keepAliveTimerRef.current);
-      keepAliveTimerRef.current = null;
-    }
-  }, []);
+  // ── TTS Controls — Session-tracked with Chrome keepalive & deterministic voice ──
 
   const startKeepAlive = useCallback(() => {
     clearKeepAlive();
@@ -370,35 +664,32 @@ export function useSpeechEngine(options: SpeechEngineOptions): SpeechEngine {
 
     const chunk = ttsQueueRef.current.shift()!;
     if (!chunk || !chunk.trim()) {
-      // Empty chunk, skip to next immediately
       speakChunkQueue(sessionId);
       return;
     }
     
     const utterance = new SpeechSynthesisUtterance(chunk);
-    
-    // GC Bug Fix: Retain reference in window so Chrome doesn't garbage collect mid-speech
-    const win = window as any;
-    win.__utterances = win.__utterances || [];
-    win.__utterances.push(utterance);
-    
     utteranceRef.current = utterance;
 
-    utterance.lang = lang;
-    utterance.rate = lang.startsWith('hi') ? 0.9 : 0.95;
-    utterance.pitch = 1.0;
-    utterance.volume = 1.0;
-
-    // Voice selection — prefer natural/enhanced voices
-    const voices = window.speechSynthesis.getVoices();
-    if (voices.length > 0) {
-      const langPrefix = lang.split('-')[0];
-      const preferred =
-        voices.find((v) => v.lang === lang && /google|microsoft|natural/i.test(v.name)) ||
-        voices.find((v) => v.lang === lang) ||
-        voices.find((v) => v.lang.startsWith(langPrefix));
-      if (preferred) utterance.voice = preferred;
+    // GC Bug Fix: retain up to 5 utterances to prevent garbage collection mid-speech without memory leaks
+    const win = window as unknown as { __utterances?: SpeechSynthesisUtterance[] };
+    win.__utterances = win.__utterances || [];
+    win.__utterances.push(utterance);
+    if (win.__utterances.length > 5) {
+      win.__utterances.shift();
     }
+
+    // ── REUSE THE EXACT SAME SELECTED VOICE ACROSS ALL CHUNKS IN THIS RESPONSE ──
+    const voice = sessionVoiceRef.current;
+    if (voice) {
+      utterance.voice = voice;
+      utterance.lang = voice.lang || 'en-IN';
+    }
+
+    const isHindi = (utterance.lang || '').toLowerCase().startsWith('hi');
+    utterance.rate = isHindi ? 0.90 : 0.94;
+    utterance.pitch = isHindi ? 1.02 : 1.0;
+    utterance.volume = 1.0;
 
     utterance.onstart = () => {
       if (ttsSessionRef.current === sessionId) {
@@ -410,12 +701,11 @@ export function useSpeechEngine(options: SpeechEngineOptions): SpeechEngine {
     utterance.onend = () => {
       if (ttsSessionRef.current !== sessionId || ttsCancelledRef.current) return;
       
-      // Speak next chunk in queue with a brief conversational pause
       if (ttsQueueRef.current.length > 0) {
         if (window.speechSynthesis.paused) {
           window.speechSynthesis.resume();
         }
-        setTimeout(() => speakChunkQueue(sessionId), 60);
+        speakChunkQueue(sessionId);
       } else {
         setIsSpeaking(false);
         utteranceRef.current = null;
@@ -424,17 +714,14 @@ export function useSpeechEngine(options: SpeechEngineOptions): SpeechEngine {
     };
 
     utterance.onerror = (e) => {
-      // Ignore errors belonging to older cancelled sessions
       if (ttsSessionRef.current !== sessionId) return;
 
       if (e.error !== 'interrupted' && e.error !== 'canceled') {
         console.warn('[TTS] Speech error on chunk:', e.error);
       }
 
-      // RESILIENCY FIX: If an individual chunk fails or times out, DO NOT abort the entire queue!
-      // Attempt to proceed with the remaining chunks so the rest of the text is not lost.
       if (ttsQueueRef.current.length > 0 && !ttsCancelledRef.current) {
-        setTimeout(() => speakChunkQueue(sessionId), 80);
+        speakChunkQueue(sessionId);
       } else {
         setIsSpeaking(false);
         utteranceRef.current = null;
@@ -450,13 +737,13 @@ export function useSpeechEngine(options: SpeechEngineOptions): SpeechEngine {
     } catch (speakErr) {
       console.warn('[TTS] Failed to execute speak:', speakErr);
       if (ttsQueueRef.current.length > 0 && !ttsCancelledRef.current) {
-        setTimeout(() => speakChunkQueue(sessionId), 80);
+        speakChunkQueue(sessionId);
       } else {
         setIsSpeaking(false);
         clearKeepAlive();
       }
     }
-  }, [lang, clearKeepAlive, startKeepAlive]);
+  }, [clearKeepAlive, startKeepAlive]);
 
   const speakText = useCallback((text: string) => {
     if (!ttsEnabled || !window.speechSynthesis) return;
@@ -478,46 +765,33 @@ export function useSpeechEngine(options: SpeechEngineOptions): SpeechEngine {
     const clean = cleanTextForSpeech(text);
     if (!clean) return;
 
+    // ── SELECT PREFERRED FEMALE VOICE ONCE FOR THE ENTIRE UTTERANCE ──
+    const targetLang = detectSpeechLanguage(clean);
+    const isHindi = targetLang.startsWith('hi');
+    const chosenVoice = isHindi
+      ? (preferredHindiVoiceRef.current || getBestVoice(voicesRef.current, 'hi-IN'))
+      : (preferredEnglishVoiceRef.current || getBestVoice(voicesRef.current, 'en-IN'));
+
+    sessionVoiceRef.current = chosenVoice;
+    if (chosenVoice) {
+      setActiveVoiceName(chosenVoice.name);
+    }
+
     // Split into natural sentence chunks
     const chunks = splitIntoSentences(clean);
     ttsQueueRef.current = chunks;
 
-    const doSpeak = () => {
-      if (ttsSessionRef.current !== currentSession || ttsCancelledRef.current) return;
-      speakChunkQueue(currentSession);
-    };
-
-    // Ensure voices are initialized before speaking
-    const voices = window.speechSynthesis.getVoices();
-    if (voices.length > 0) {
-      // Small tick to ensure previous cancel completed in browser thread
-      setTimeout(doSpeak, 30);
-    } else {
-      const onReady = () => {
-        window.speechSynthesis.removeEventListener('voiceschanged', onReady);
-        doSpeak();
-      };
-      window.speechSynthesis.addEventListener('voiceschanged', onReady);
-      setTimeout(() => {
-        window.speechSynthesis.removeEventListener('voiceschanged', onReady);
-        if (!window.speechSynthesis.speaking) doSpeak();
-      }, 800);
-    }
+    // Speak first chunk directly
+    speakChunkQueue(currentSession);
   }, [ttsEnabled, speakChunkQueue, clearKeepAlive]);
 
-  const stopSpeaking = useCallback(() => {
-    ttsSessionRef.current += 1;
-    ttsCancelledRef.current = true;
-    ttsQueueRef.current = [];
-    clearKeepAlive();
-    try {
-      window.speechSynthesis?.cancel();
-    } catch {
-      // ignore
-    }
-    utteranceRef.current = null;
-    setIsSpeaking(false);
-  }, [clearKeepAlive]);
+  const previewVoice = useCallback(() => {
+    const isHindi = lang.toLowerCase().startsWith('hi');
+    const sampleText = isHindi
+      ? 'नमस्ते, मैं साइबर साथी हूँ। आपकी ऑनलाइन सुरक्षा में कैसे मदद कर सकती हूँ?'
+      : "Hello, I am CyberSaathi, your digital safety assistant. How can I help you today?";
+    speakText(sampleText);
+  }, [lang, speakText]);
 
   return {
     isListening,
@@ -535,6 +809,8 @@ export function useSpeechEngine(options: SpeechEngineOptions): SpeechEngine {
     ttsSupported,
     speakText,
     stopSpeaking,
+    activeVoiceName,
+    previewVoice,
 
     voiceError,
     clearVoiceError,

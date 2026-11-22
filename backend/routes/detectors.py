@@ -9,9 +9,12 @@ import ssl
 import re
 from difflib import SequenceMatcher
 from urllib.parse import urlparse, parse_qs, unquote
+import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import APIRouter, File, Form, UploadFile
+from fastapi.responses import JSONResponse
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, EmailStr, Field, HttpUrl
 import requests
 import numpy as np
@@ -34,6 +37,7 @@ from routes.utils import (
     url_scam_signals,
     download_media_from_url,
     sanitize_for_json,
+    is_safe_public_url,
 )
 
 router = APIRouter(tags=["detectors"])
@@ -144,6 +148,17 @@ def detect_deepfake_file(file_path: str) -> Dict[str, Any]:
         getattr(deepfake_pipeline, "__file__", "unknown"),
     )
     return _deepfake_engine().detect_deepfake(file_path)
+
+
+_DEEPFAKE_SEMAPHORE: Optional[asyncio.Semaphore] = None
+
+
+def _get_deepfake_semaphore() -> asyncio.Semaphore:
+    """Lazy initialization of concurrency semaphore to avoid cross-event-loop binding issues."""
+    global _DEEPFAKE_SEMAPHORE
+    if _DEEPFAKE_SEMAPHORE is None:
+        _DEEPFAKE_SEMAPHORE = asyncio.Semaphore(1)
+    return _DEEPFAKE_SEMAPHORE
 
 
 def _cache_get(key: str) -> Optional[Dict[str, Any]]:
@@ -499,6 +514,9 @@ def _domain_age_from_whois(domain: str) -> str:
 
 
 def _check_domain_reachability(url: str) -> tuple[bool, Optional[str]]:
+    is_safe, ssrf_err = is_safe_public_url(url)
+    if not is_safe:
+        return False, ssrf_err or "Access to private or restricted addresses is forbidden."
     try:
         parsed = requests.utils.urlparse(url)
         host = parsed.hostname
@@ -521,6 +539,9 @@ def _check_domain_reachability(url: str) -> tuple[bool, Optional[str]]:
 
 
 def _redirect_profile(url: str) -> tuple[List[str], Optional[str]]:
+    is_safe, ssrf_err = is_safe_public_url(url)
+    if not is_safe:
+        return [], ssrf_err or "Access to private or restricted addresses is forbidden."
     try:
         response = requests.get(url, allow_redirects=True, timeout=8, headers={"user-agent": "veyron-backend"})
         chain = [r.url for r in response.history] + [response.url]
@@ -935,12 +956,20 @@ def check_app(payload: AppCheckRequest) -> Dict[str, Any]:
         developer = live_details.get("developer", "Unknown")
         score = float(live_details.get("score") or 0.0)
         installs = live_details.get("installs")
-        play_store_link = live_details.get("url") or f"https://play.google.com/store/apps/details?id={official_package}"
+        play_store_link = (
+            f"https://play.google.com/store/apps/details?id={official_package}"
+            if (official_package and official_package != "Unknown")
+            else (live_details.get("url") or None)
+        )
     elif official_app:
         app_name = official_app["name"]
         official_package = official_app["officialPackage"]
         developer = official_app.get("developer", "Official Government Source")
-        play_store_link = official_app.get("playStoreLink") or f"https://play.google.com/store/apps/details?id={official_package}"
+        play_store_link = (
+            f"https://play.google.com/store/apps/details?id={official_package}"
+            if (official_package and official_package != "Unknown")
+            else (official_app.get("playStoreLink") or None)
+        )
     else:
         app_name = raw_query if not extracted_url_pkg else extracted_url_pkg
         official_package = resolved_pkg or input_package or "Unknown"
@@ -1121,7 +1150,8 @@ async def detect_deepfake(
                 temp_path = temp_file.name
 
         try:
-            model_result = detect_deepfake_file(temp_path)
+            async with _get_deepfake_semaphore():
+                model_result = await run_in_threadpool(detect_deepfake_file, temp_path)
         except ValueError as ve:
             return _normalize_deepfake_verdict_payload({
                 **_deepfake_route_debug({"debug_source_name": source_name, "debug_actual_exception": str(ve)}),
@@ -1254,3 +1284,51 @@ def extension_check_site(payload: LinkScanRequest) -> Dict[str, Any]:
         "englishSummary": "If the verdict is dangerous, leave the site immediately.",
         "hindiSummary": "यदि निर्णय 'खतरनाक' हो, तो साइट तुरंत बंद करें।",
     }
+
+
+class QRScanRequest(BaseModel):
+    payload_text: str = Field(min_length=1, max_length=4096)
+
+
+@router.post("/scan-qr")
+async def scan_qr_endpoint(
+    file: Optional[UploadFile] = File(None),
+    payload_text: Optional[str] = Form(None),
+) -> Dict[str, Any]:
+    """
+    Decodes and evaluates QR codes from image file upload or camera payload.
+    Classifies payload into URL, UPI, Wi-Fi, Contact Card, or Text.
+    Enforces zero-trust evaluation with NO automatic navigation.
+    """
+    from routes.qr_engine import decode_qr_image_bytes, evaluate_qr_payload
+
+    decoded_text: Optional[str] = None
+    if file:
+        contents = await file.read()
+        if not contents:
+            return JSONResponse(status_code=400, content={"detail": "Empty file received."})
+        decoded_text, err = decode_qr_image_bytes(contents)
+        if err or not decoded_text:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "detail": err or "No QR code could be detected in the provided image.",
+                    "status": "not_detected",
+                },
+            )
+    elif payload_text and payload_text.strip():
+        decoded_text = payload_text.strip()
+    else:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": "Either a QR image file or payload_text must be provided."},
+        )
+
+    report = evaluate_qr_payload(decoded_text)
+    return report
+
+
+@router.post("/scan-qr-payload")
+def scan_qr_payload_endpoint(request: QRScanRequest) -> Dict[str, Any]:
+    from routes.qr_engine import evaluate_qr_payload
+    return evaluate_qr_payload(request.payload_text)

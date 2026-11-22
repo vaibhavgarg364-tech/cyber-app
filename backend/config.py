@@ -7,7 +7,12 @@ from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Ensure backend/.env is loaded even when process is started from project root
+_backend_env = Path(__file__).resolve().parent / ".env"
+if _backend_env.exists():
+    load_dotenv(dotenv_path=_backend_env)
 load_dotenv()
+
 
 
 class Settings(BaseSettings):

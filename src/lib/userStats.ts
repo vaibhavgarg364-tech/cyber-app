@@ -1,4 +1,4 @@
-export type ToolKey = 'email' | 'link' | 'deepfake' | 'app';
+export type ToolKey = 'email' | 'link' | 'deepfake' | 'app' | 'qr';
 export type VerdictLevel = 'safe' | 'suspicious' | 'dangerous';
 
 export interface UserActivity {

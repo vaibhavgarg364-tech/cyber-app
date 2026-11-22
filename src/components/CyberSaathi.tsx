@@ -91,11 +91,11 @@ export default function CyberSaathi({
         initialMode === 'emergency'
           ? t(
               'I am here with you. Tell me what happened — I will guide you step by step.',
-              'मैं आपके साथ हूँ। बताइए क्या हुआ — मैं आपको कदम-दर-कदम मार्गदर्शन दूँगा।'
+              'मैं आपके साथ हूँ। बताइए क्या हुआ — मैं आपको कदम-दर-कदम मार्गदर्शन दूँगी।'
             )
           : t(
               'Hello! I am CyberSaathi — your personal cyber safety assistant. How can I help you today?',
-              'नमस्ते! मैं CyberSaathi हूँ — आपका साइबर सुरक्षा सहायक। आज मैं आपकी कैसे मदद कर सकता हूँ?'
+              'नमस्ते! मैं CyberSaathi हूँ — आपकी साइबर सुरक्षा साथी। आज मैं आपकी कैसे मदद कर सकती हूँ?'
             ),
       timestamp: new Date(),
     },
@@ -347,6 +347,7 @@ export default function CyberSaathi({
               ttsEnabled={speech.ttsEnabled}
               isSpeaking={speech.isSpeaking}
               ttsSupported={speech.ttsSupported}
+              activeVoiceName={speech.activeVoiceName}
               onToggleTts={handleToggleTts}
               onStopSpeaking={speech.stopSpeaking}
               onClose={closeChat}
@@ -356,7 +357,12 @@ export default function CyberSaathi({
             {/* Messages */}
             <div className="cs-messages">
               {messages.map((msg, i) => (
-                <MessageBubble key={i} msg={msg} index={i} />
+                <MessageBubble
+                  key={i}
+                  msg={msg}
+                  index={i}
+                  onSpeakMessage={speech.speakText}
+                />
               ))}
               {loading && <TypingIndicator />}
               <div ref={bottomRef} />

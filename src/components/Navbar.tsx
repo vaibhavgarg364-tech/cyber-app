@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, Shield } from 'lucide-react';
+import { Menu, X, Shield, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLang } from '../context/LanguageContext';
 import logo from '/image.png';
@@ -13,6 +13,7 @@ const navItems = [
   { key: 'home', en: 'Dashboard', hi: 'डैशबोर्ड' },
   { key: 'deepfake', en: 'Deepfake', hi: 'डीपफेक' },
   { key: 'scanner', en: 'Scanner', hi: 'स्कैनर' },
+  { key: 'qrshield', en: 'QR Shield', hi: 'क्यूआर शील्ड' },
   { key: 'spam', en: 'Email', hi: 'ईमेल' },
   { key: 'app', en: 'Apps', hi: 'ऐप्स' },
   { key: 'rootcause', en: 'Analysis', hi: 'विश्लेषण' },
@@ -68,6 +69,21 @@ export default function Navbar({ currentPage, setPage }: NavbarProps) {
 
           {/* Right side */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Veyron Pro Link */}
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setPage('pro')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold tracking-wider uppercase transition-all duration-200 ${
+                currentPage === 'pro'
+                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white border border-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.4)]'
+                  : 'bg-purple-500/10 text-purple-300 border border-purple-500/30 hover:bg-purple-500/20 hover:border-purple-500/50'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
+              <span>PRO</span>
+            </motion.button>
+
             {/* Language Toggle */}
             <motion.button
               whileHover={{ scale: 1.05 }}
@@ -103,6 +119,23 @@ export default function Navbar({ currentPage, setPage }: NavbarProps) {
             className="lg:hidden bg-veyron-navy/95 backdrop-blur-xl border-t cyber-border overflow-hidden"
           >
             <div className="px-4 py-4 space-y-2 max-h-96 overflow-y-auto">
+              <motion.button
+                onClick={() => {
+                  setPage('pro');
+                  setMenuOpen(false);
+                }}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-bold tracking-wider uppercase transition-all ${
+                  currentPage === 'pro'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-purple-500/10 text-purple-300 border border-purple-500/30'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-purple-400" />
+                  VEYRON PRO PREVIEW
+                </span>
+                <span className="text-[10px] bg-purple-500/30 px-2 py-0.5 rounded text-purple-200">ENTERPRISE</span>
+              </motion.button>
               {navItems.map((item, idx) => (
                 <motion.button
                   key={item.key}

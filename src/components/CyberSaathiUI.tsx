@@ -34,6 +34,7 @@ interface ChatHeaderProps {
   ttsEnabled: boolean;
   isSpeaking: boolean;
   ttsSupported: boolean;
+  activeVoiceName?: string;
   onToggleTts: () => void;
   onStopSpeaking: () => void;
   onClose: () => void;
@@ -41,7 +42,7 @@ interface ChatHeaderProps {
 }
 
 export function ChatHeader({
-  isEmergency, ttsEnabled, isSpeaking, ttsSupported,
+  isEmergency, ttsEnabled, isSpeaking, ttsSupported, activeVoiceName,
   onToggleTts, onStopSpeaking, onClose, t,
 }: ChatHeaderProps) {
   return (
@@ -90,7 +91,9 @@ export function ChatHeader({
             aria-label={t('Toggle voice output', 'आवाज़ आउटपुट टॉगल')}
             title={
               ttsEnabled
-                ? t('Voice responses: ON', 'आवाज़ जवाब: चालू')
+                ? (activeVoiceName
+                    ? `${t('Voice responses: ON', 'आवाज़ जवाब: चालू')} (${activeVoiceName})`
+                    : t('Voice responses: ON', 'आवाज़ जवाब: चालू'))
                 : t('Voice responses: OFF', 'आवाज़ जवाब: बंद')
             }
           >
@@ -148,9 +151,10 @@ function formatContent(text: string) {
 interface MessageBubbleProps {
   msg: Message;
   index: number;
+  onSpeakMessage?: (text: string) => void;
 }
 
-export function MessageBubble({ msg }: MessageBubbleProps) {
+export function MessageBubble({ msg, onSpeakMessage }: MessageBubbleProps) {
   const isUser = msg.role === 'user';
   return (
     <motion.div
@@ -198,6 +202,20 @@ export function MessageBubble({ msg }: MessageBubbleProps) {
                 </a>
               )
             )}
+          </div>
+        )}
+        {!isUser && onSpeakMessage && (
+          <div className="mt-2.5 pt-1.5 border-t border-slate-700/40 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => onSpeakMessage(msg.content)}
+              className="text-[11px] text-slate-400 hover:text-cyan-300 transition-colors inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-800/40 hover:bg-slate-700/60"
+              title="Listen to this response"
+              aria-label="Listen to this response"
+            >
+              <Volume2 className="w-3 h-3 text-cyan-400" />
+              <span>Listen</span>
+            </button>
           </div>
         )}
       </div>
@@ -338,7 +356,7 @@ export function ChatInput({
             <div className="cs-listening-badge">
               <WaveformDisplay />
               <span className="text-[11px] font-medium ml-1.5">
-                {t('Listening — speak now', 'सुन रहा हूँ — बोलें')}
+                {t('Listening — speak now', 'सुन रही हूँ — बोलें')}
               </span>
             </div>
           </motion.div>
@@ -360,7 +378,7 @@ export function ChatInput({
           }}
           placeholder={
             isListening
-              ? t('Listening... edit or speak', 'सुन रहा हूँ... बोलें या लिखें')
+              ? t('Listening... edit or speak', 'सुन रही हूँ... बोलें या लिखें')
               : t('Ask CyberSaathi anything...', 'CyberSaathi से कुछ भी पूछें...')
           }
           className={`cs-text-input ${isListening ? 'cs-text-input-listening' : ''}`}

@@ -331,6 +331,12 @@ export default function DeepfakeDetector() {
                     '🛡️ CV रीसाइज़िंग से पहले मूल अपलोड बाइट्स को अप्रभावित रखकर मेटाडेटा व C2PA विश्लेषण किया जाता है।'
                   )}
                 </p>
+                <p className="text-slate-400 text-xs mt-1 border-t border-slate-700/50 pt-1.5">
+                  {t(
+                    '🔬 Detector Scope: Specialized in detecting generative AI (diffusion models, GANs, and synthetic generation artifacts) and cryptographic provenance. Conventional 2D editing (manual splicing/cloning) lacks diffusion noise signatures and may not trigger generative AI thresholds.',
+                    '🔬 डिटेक्टर दायरा: जनरेटिव AI (डिफ्यूजन, GAN, सिंथेटिक निर्माण) और क्रिप्टोग्राफ़िक मूल की पहचान में विशेषज्ञ। सामान्य 2D संपादन (मैनुअल स्प्लिसिंग) में डिफ्यूजन नॉइज़ नहीं होता।'
+                  )}
+                </p>
               </div>
             </div>
           </GlassmorphicPanel>
@@ -465,7 +471,7 @@ export default function DeepfakeDetector() {
                         {vConfig.label}
                       </span>
                       <span className="text-xs text-slate-400 font-mono">
-                        Certainty: <strong className="text-white">{result.confidence}%</strong>
+                        Model Confidence: <strong className="text-white">{result.confidence}%</strong>
                       </span>
                     </div>
 
@@ -507,7 +513,7 @@ export default function DeepfakeDetector() {
 
                       <div className="flex items-center gap-3 flex-wrap">
                         <span className="text-xs uppercase tracking-wide text-slate-500 w-44 shrink-0">
-                          {t('Decision Certainty', 'निर्णय निश्चितता')}
+                          {t('Ensemble Signal Score', 'एंसेंबल सिग्नल स्कोर')}
                         </span>
                         <div className="flex-1 min-w-[140px] h-2.5 bg-slate-800/50 rounded-full overflow-hidden border border-cyan-500/20">
                           <motion.div
@@ -519,6 +525,9 @@ export default function DeepfakeDetector() {
                         </div>
                         <span className="text-cyan-300 font-mono text-sm w-12">{result.confidence}%</span>
                       </div>
+                      <p className="text-[11px] text-slate-500 italic mt-2">
+                        * {t('Confidence scores represent heuristic signal alignment across stages, not calibrated statistical probabilities.', 'विश्वसनीयता स्कोर विभिन्न स्तरों के बीच सिग्नल संरेखण दर्शाते हैं, सांख्यिकीय संभावना नहीं।')}
+                      </p>
                     </div>
                   </div>
                 </div>

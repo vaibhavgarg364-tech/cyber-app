@@ -10,7 +10,7 @@ import { recordUserActivity } from '../lib/userStats';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type OverallStatus = 'Trusted' | 'Low Risk' | 'Moderate Risk' | 'Suspicious' | 'Dangerous' | 'Unknown';
+type OverallStatus = 'Trusted' | 'Low Risk' | 'Moderate Risk' | 'Suspicious' | 'Dangerous' | 'Blocked' | 'Unknown';
 
 interface TechnicalCheck {
   check: string;
@@ -116,6 +116,15 @@ const statusConfig: Record<OverallStatus, {
     bg: 'bg-red-500/5',
     badge: 'bg-red-500/20 text-red-300 border border-red-500/40',
     labelHi: 'खतरनाक',
+  },
+  Blocked: {
+    icon: Shield,
+    color: 'text-rose-400',
+    textColor: 'text-rose-400',
+    border: 'border-rose-500/30',
+    bg: 'bg-rose-500/5',
+    badge: 'bg-rose-500/20 text-rose-300 border border-rose-500/40',
+    labelHi: 'प्रतिबंधित',
   },
   Unknown: {
     icon: Info,
