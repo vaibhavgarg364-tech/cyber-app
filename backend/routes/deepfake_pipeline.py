@@ -13,6 +13,8 @@ import os
 import tempfile
 import threading
 import time
+import uuid
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple
@@ -577,9 +579,14 @@ class PatchForensicEngine:
         confidence = _clamp(abs(score - 0.5) * 2.0)
         return float(score), float(confidence)
 
-    def generate_heatmap(self, img: np.ndarray, result: PatchForensicResult) -> Optional[str]:
+    def generate_heatmap(
+        self,
+        img: np.ndarray,
+        result: PatchForensicResult,
+        debug_prefix: str = "",
+    ) -> Optional[str]:
         """Requirement Part 5: Generate artifact concentration overlay (memory optimized)."""
-        if not result.available or not result.patches:
+        if not DEBUG_MODE or not result.available or not result.patches:
             return None
             
         h, w = img.shape[:2]
@@ -615,11 +622,8 @@ class PatchForensicEngine:
         heatmap_color = cv2.applyColorMap(heatmap_norm, cv2.COLORMAP_JET)
         overlay = cv2.addWeighted(img_ds, 0.7, heatmap_color, 0.3, 0)
         
-        os.makedirs("debug_outputs", exist_ok=True)
-        filename = f"patch_heatmap_{int(time.time())}.jpg"
-        path = os.path.join("debug_outputs", filename)
-        
-        cv2.imwrite(path, overlay)
+        prefix = debug_prefix or f"heatmap_{time.time_ns()}"
+        path = _save_debug_image(overlay, "patch_heatmap", prefix)
         
         # GC clean up
         del heatmap
@@ -829,26 +833,51 @@ def _resize_long_edge(img: np.ndarray, max_side: int = 896) -> Tuple[np.ndarray,
     return np.ascontiguousarray(cv2.resize(img, (nw, nh), interpolation=cv2.INTER_AREA)), scale
 
 # --- MediaPipe Face Detection (with comprehensive debugging) ---
-DEBUG_MODE = os.environ.get("VEYRON_DEBUG_FACES", "1") == "1"
+def _debug_faces_enabled() -> bool:
+    value = os.environ.get("VEYRON_DEBUG_FACES", "false").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
+DEBUG_MODE = _debug_faces_enabled()
 DEBUG_OUTPUT_DIR = Path("debug_outputs")
+_ACTIVE_DEBUG_ARTIFACTS: ContextVar[Optional[List[Path]]] = ContextVar(
+    "active_debug_artifacts", default=None
+)
+
+
+def _register_debug_artifact(path: Path) -> None:
+    artifacts = _ACTIVE_DEBUG_ARTIFACTS.get()
+    if artifacts is not None:
+        artifacts.append(path)
 
 def _setup_debug_output():
     """Ensure debug output directory exists."""
     if DEBUG_MODE:
-        DEBUG_OUTPUT_DIR.mkdir(exist_ok=True)
+        DEBUG_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         logger.info(f"Debug mode enabled. Images saved to {DEBUG_OUTPUT_DIR}")
 
 def _save_debug_image(image: np.ndarray, name: str, debug_prefix: str = ""):
     """Save intermediate debug image."""
     if not DEBUG_MODE:
         return None
+    filename = None
     try:
+        DEBUG_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         timestamp = Path(debug_prefix).stem if debug_prefix else "image"
         filename = DEBUG_OUTPUT_DIR / f"{timestamp}_{name}.jpg"
-        cv2.imwrite(str(filename), image)
+        if not cv2.imwrite(str(filename), image):
+            raise OSError(f"OpenCV could not write debug image to {filename}")
+        _register_debug_artifact(filename)
         logger.debug(f"Saved debug image: {filename}")
         return str(filename)
-    except Exception as e:
+    except BaseException as e:
+        if filename is not None and filename.exists():
+            try:
+                filename.unlink()
+            except OSError:
+                logger.exception("Failed to remove incomplete debug image %s", filename)
+        if not isinstance(e, Exception):
+            raise
         logger.warning(f"Failed to save debug image {name}: {e}")
         return None
 
@@ -2655,6 +2684,22 @@ def fuse_signals(
     }
 
 def run_forensic_pipeline(file_path: str) -> Dict[str, Any]:
+    artifacts: List[Path] = []
+    token = _ACTIVE_DEBUG_ARTIFACTS.set(artifacts)
+    try:
+        return _run_forensic_pipeline(file_path)
+    except BaseException:
+        for artifact in reversed(artifacts):
+            try:
+                artifact.unlink(missing_ok=True)
+            except OSError:
+                logger.exception("Failed to remove incomplete debug artifact %s", artifact)
+        raise
+    finally:
+        _ACTIVE_DEBUG_ARTIFACTS.reset(token)
+
+
+def _run_forensic_pipeline(file_path: str) -> Dict[str, Any]:
     logger.info(f"[Pipeline] Starting forensic analysis for: {file_path}")
     pipeline_started = time.perf_counter()
     perf: Dict[str, Any] = {"pipeline_started": pipeline_started}
@@ -2683,7 +2728,7 @@ def run_forensic_pipeline(file_path: str) -> Dict[str, Any]:
         log_memory_rss("image_loaded")
         
         # Create debug prefix from filename
-        debug_prefix = Path(file_path).stem
+        debug_prefix = f"{Path(file_path).stem}_{uuid.uuid4().hex}"
         
         img, scale = _resize_long_edge(img, 896)
         logger.debug(f"[Pipeline] After resize: {img.shape}, scale={scale}")
@@ -2754,7 +2799,9 @@ def run_forensic_pipeline(file_path: str) -> Dict[str, Any]:
                 
         patch_result = patch_engine.analyze(img, mask=face_mask)
         if patch_result.available:
-            patch_result.heatmap_path = patch_engine.generate_heatmap(img, patch_result)
+            patch_result.heatmap_path = patch_engine.generate_heatmap(
+                img, patch_result, debug_prefix
+            )
         log_memory_rss("patch_engine_complete")
 
         result = fuse_signals(signals, ensemble_result, patch_result, ctype_info, prov_data=prov_data, file_path=file_path)

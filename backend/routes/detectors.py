@@ -1117,8 +1117,8 @@ async def detect_deepfake(
             suffix = Path(source_name).suffix or ".jpg"
             blob = await file.read()
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
-                temp_file.write(blob)
                 temp_path = temp_file.name
+                temp_file.write(blob)
 
         try:
             model_result = detect_deepfake_file(temp_path)

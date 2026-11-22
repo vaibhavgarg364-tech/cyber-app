@@ -26,6 +26,9 @@ Veyron is a comprehensive cyber safety platform with AI-powered threat detection
 - Health: [http://localhost:8000/health](http://localhost:8000/health)
 - Swagger docs: [http://localhost:8000/docs](http://localhost:8000/docs)
 
+### Deepfake debug images
+Deepfake debug image storage is disabled by default, so normal analysis does not save uploaded or derived images. For local debugging only, explicitly set `VEYRON_DEBUG_FACES=true` in `backend/.env`. This writes intermediate images and heatmaps under `debug_outputs/` for inspection; successful debug artifacts are retained until you remove them. If analysis fails, artifacts created by that operation are removed. Uploaded and downloaded processing files are temporary and are cleaned up after analysis. Do not enable this option in production.
+
 ## (Optional) Run with Docker
 
 ### Prerequisites
