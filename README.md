@@ -195,8 +195,8 @@ Veyron Pro is a planned premium personal cybersecurity experience built around p
 
 ### Step 1: Clone the Repository
 `ash
-git clone https://github.com/vaibhavgarg364-tech/Veyron-v1.git
-cd Veyron-v1
+git clone https://github.com/vaibhavgarg364-tech/cyber-app.git
+cd cyber-app
 `
 
 
